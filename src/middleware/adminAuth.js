@@ -31,11 +31,30 @@ const adminAuth = async (req, res, next) => {
       });
     }
 
-    req.admin = decoded;
-    req.admin.permissions = admin.permissions; // Attach permissions to request
+    req.admin = {
+      ...decoded,
+      permissions: admin.permissions,
+      profile: admin.profile,
+    };
+
     next();
   } catch (error) {
     console.error("Admin auth middleware error:", error);
+
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({
+        success: false,
+        message: "Token has expired",
+      });
+    }
+
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token",
+      });
+    }
+
     res.status(401).json({
       success: false,
       message: "Token is not valid",
@@ -46,7 +65,7 @@ const adminAuth = async (req, res, next) => {
 // Permission middleware
 const requirePermission = (permission) => {
   return (req, res, next) => {
-    if (!req.admin.permissions[permission]) {
+    if (!req.admin.permissions || !req.admin.permissions[permission]) {
       return res.status(403).json({
         success: false,
         message: `Access denied. Required permission: ${permission}`,
@@ -56,4 +75,7 @@ const requirePermission = (permission) => {
   };
 };
 
-module.exports = { adminAuth, requirePermission };
+module.exports = {
+  adminAuth,
+  requirePermission,
+};

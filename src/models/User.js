@@ -27,4 +27,15 @@ const userSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
 });
 
+userSchema.methods.comparePassword = async function (candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
+};
+
+// Method to generate auth token
+userSchema.methods.generateAuthToken = function () {
+  return jwt.sign({ userId: this._id, role: "user" }, process.env.JWT_SECRET, {
+    expiresIn: "30d",
+  });
+};
+
 module.exports = mongoose.model("User", userSchema);

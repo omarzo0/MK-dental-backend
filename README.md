@@ -17,7 +17,7 @@
 - [x] Shopping Cart Service: Manages users’ shopping carts, including adding/removing items and updating quantities.
 - [x] Order Service: Processes orders, including placing orders, tracking order status, and managing order history.
 - [x] Payment Service: Handles payment processing, integrating with `Stripe` payment gateway.
-- [x] Notification Service: Sends email and SMS notifications using `NodeMailer` and `Twilio`.
+- [] Notification Service: Sends email and SMS notifications using `NodeMailer` and `Twilio`.
 
 ## Architecture
 
@@ -51,3 +51,121 @@ Here `--build` is used to build the image again if there are any changes in the 
 ## Github Actions (CI/CD) Requirements
 
 - Add `DOCKER_USERNAME` & `DOCKER_PASSWORD` to github secrets to push the image to docker hub.
+
+Complete Folder Structure
+
+src/
+├── controllers/
+│ ├── user/
+│ │ ├── authController.js # User registration, login, logout
+│ │ ├── profileController.js # User profile management
+│ │ └── orderController.js # User order operations
+│ ├── admin/
+│ │ ├── authController.js # Admin authentication
+│ │ ├── dashboardController.js # Admin dashboard analytics
+│ │ ├── userManagementController.js # User management (CRUD)
+│ │ ├── productManagementController.js # Product management (admin)
+│ │ ├── orderManagementController.js # Order management (admin)
+│ └── shared/
+│ ├── productController.js # Product browsing (both user/admin)
+│ ├── cartController.js # Shopping cart operations
+│ ├── paymentController.js # Payment processing
+│ └── transactionController.js # Transaction management
+├── routes/
+│ ├── user/
+│ │ ├── authRoutes.js # POST /api/auth/register, /login, /logout
+│ │ ├── profileRoutes.js # GET/PUT /api/user/profile
+│ │ ├── orderRoutes.js # GET/POST /api/user/orders
+│ │ └── cartRoutes.js # GET/POST/PUT/DELETE /api/user/cart
+│ ├── admin/
+│ │ ├── authRoutes.js # POST /api/admin/auth/login
+│ │ ├── dashboardRoutes.js # GET /api/admin/dashboard
+│ │ ├── userRoutes.js # CRUD /api/admin/users
+│ │ ├── productRoutes.js # CRUD /api/admin/products
+│ │ ├── orderRoutes.js # CRUD /api/admin/orders
+│ │ └── analyticsRoutes.js # GET /api/admin/analytics/\*
+│ └── shared/
+│ ├── productRoutes.js # GET /api/products (browsing)
+│ ├── paymentRoutes.js # POST /api/payments
+│ └── transactionRoutes.js # GET /api/transactions
+├── middleware/
+│ ├── auth/
+│ │ ├── userAuth.js # User authentication middleware
+│ │ └── adminAuth.js # Admin authentication middleware
+│ └── validation/
+│ ├── user/
+│ │ ├── authValidation.js # User register/login validation
+│ │ └── profileValidation.js # User profile validation
+│ ├── admin/
+│ │ ├── authValidation.js # Admin login validation
+│ │ ├── userManagementValidation.js # User management validation
+│ │ ├── productValidation.js # Product management validation
+│ │ └── orderValidation.js # Order management validation
+│ └── shared/
+│ ├── productValidation.js # Product browsing validation
+│ ├── cartValidation.js # Cart operations validation
+│ ├── paymentValidation.js # Payment validation
+│ └── transactionValidation.js # Transaction validation
+├── models/
+│ ├── User.js
+│ ├── Admin.js
+│ ├── Product.js
+│ ├── Order.js
+│ ├── Cart.js
+│ ├── Payment.js
+│ ├── Transaction.js
+│ └── Analytics.js
+├── config/
+│ ├── database.js
+│ └── cloudinary.js (if using file uploads)
+├── utils/
+│ ├── helpers.js
+│ ├── emailService.js
+│ └── paymentGateway.js
+├── public/
+│ └── uploads/ (for product images)
+└── app.js (main application file)
+
+Route Endpoints Summary
+
+/auth/register POST - User registration
+/auth/login POST - User login  
+/auth/logout POST - User logout
+/user/profile GET - Get user profile
+/user/profile PUT - Update user profile
+/user/orders GET - Get user orders
+/user/orders POST - Create order
+/user/orders/:id GET - Get specific order
+/user/cart GET - Get cart
+/user/cart/items POST - Add to cart
+/user/cart/items/:id PUT - Update cart item
+/user/cart/items/:id DELETE - Remove from cart
+
+/admin/auth/login POST - Admin login
+/admin/dashboard GET - Dashboard analytics
+/admin/users GET - List all users
+/admin/users/:id GET - Get user details
+/admin/users/:id PUT - Update user
+/admin/users/:id DELETE - Delete user
+/admin/products GET - List all products (admin view)
+/admin/products POST - Create product
+/admin/products/:id PUT - Update product
+/admin/products/:id DELETE - Delete product
+/admin/orders GET - List all orders
+/admin/orders/:id PUT - Update order status
+/admin/analytics/sales GET - Sales analytics
+/admin/analytics/products GET - Product analytics
+
+/products GET - Browse products (public/user/admin)
+/products/featured GET - Featured products (public)
+/products/category/:cat GET - Products by category (public)
+/products/:id GET - Get product details
+/payments POST - Process payment
+/transactions GET - Get transactions (with proper auth)
+
+/products GET - Browse products
+/products/featured GET - Featured products  
+/products/category/:cat GET - Products by category
+/products/search GET - Search products
+/health GET - Health check
+/ GET - API info

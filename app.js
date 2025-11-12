@@ -40,9 +40,11 @@ const authLimiter = rateLimit({
     message: "Too many authentication attempts, please try again later.",
   },
 });
-app.use("/api/users/login", authLimiter);
-app.use("/api/users/register", authLimiter);
-app.use("/api/admin/login", authLimiter);
+
+// Apply auth rate limiting to both user and admin auth routes
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", authLimiter);
+app.use("/api/admin/auth/login", authLimiter);
 
 // Logging
 app.use(morgan("combined")); // Use 'dev' for development, 'combined' for production
@@ -54,25 +56,109 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 // Static files (if needed)
 app.use("/uploads", express.static("uploads"));
 
-// Routes
-const userRoutes = require("./src/routes/userRoutes");
-const adminRoutes = require("./src/routes/adminRoutes");
-const productRoutes = require("./src/routes/productRoutes");
-const orderRoutes = require("./src/routes/orderRoutes");
-const paymentRoutes = require("./src/routes/paymentRoutes");
-const cartRoutes = require("./src/routes/cartRoutes");
-const analyticsRoutes = require("./src/routes/analyticsRoutes");
-const transactionsRoutes = require("./src/routes/transactionRoutes");
+// ==================== ROUTES WITH NEW STRUCTURE ====================
 
-// API Routes
-app.use("/api/users", userRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/products", productRoutes);
-app.use("/api/orders", orderRoutes);
-app.use("/api/payments", paymentRoutes);
-app.use("/api/cart", cartRoutes);
-app.use("/api/analytics", analyticsRoutes);
-app.use("/api/transactions", transactionsRoutes);
+// User Routes
+const userAuthRoutes = require("./src/routes/user/authRoutes");
+const userProfileRoutes = require("./src/routes/user/profileRoutes");
+const userOrderRoutes = require("./src/routes/user/orderRoutes");
+const userCartRoutes = require("./src/routes/user/cartRoutes");
+
+// Admin Routes
+const adminAuthRoutes = require("./src/routes/admin/authRoutes");
+const adminDashboardRoutes = require("./src/routes/admin/dashboardRoutes");
+const adminUserRoutes = require("./src/routes/admin/userRoutes");
+const adminProductRoutes = require("./src/routes/admin/productRoutes");
+const adminOrderRoutes = require("./src/routes/admin/orderRoutes");
+
+// Shared Routes
+const sharedProductRoutes = require("./src/routes/shared/productRoutes");
+const sharedPaymentRoutes = require("./src/routes/shared/paymentRoutes");
+const sharedTransactionRoutes = require("./src/routes/shared/transactionRoutes");
+
+// ==================== API ROUTES REGISTRATION ====================
+
+// User API Routes
+app.use("/api/auth", userAuthRoutes);
+app.use("/api/user/profile", userProfileRoutes);
+app.use("/api/user/orders", userOrderRoutes);
+app.use("/api/user/cart", userCartRoutes);
+
+// Admin API Routes
+app.use("/api/admin/auth", adminAuthRoutes);
+app.use("/api/admin/dashboard", adminDashboardRoutes);
+app.use("/api/admin/users", adminUserRoutes);
+app.use("/api/admin/products", adminProductRoutes);
+app.use("/api/admin/orders", adminOrderRoutes);
+
+// Shared API Routes
+app.use("/api/products", sharedProductRoutes);
+app.use("/api/payments", sharedPaymentRoutes);
+app.use("/api/transactions", sharedTransactionRoutes);
+
+// ==================== PUBLIC ROUTES ====================
+
+// Public product routes (no authentication required)
+app.get("/api/products/featured", async (req, res) => {
+  try {
+    const Product = require("./src/models/Product");
+    const products = await Product.find({
+      featured: true,
+      status: "active",
+    })
+      .limit(8)
+      .select("name price images slug category")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      data: { products },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching featured products",
+    });
+  }
+});
+
+app.get("/api/products/category/:category", async (req, res) => {
+  try {
+    const { category } = req.params;
+    const { page = 1, limit = 12 } = req.query;
+
+    const Product = require("./src/models/Product");
+    const products = await Product.find({
+      category: { $regex: category, $options: "i" },
+      status: "active",
+    })
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .select("name price images slug category");
+
+    const totalProducts = await Product.countDocuments({
+      category: { $regex: category, $options: "i" },
+      status: "active",
+    });
+
+    res.json({
+      success: true,
+      data: {
+        products,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalProducts / limit),
+          totalProducts,
+        },
+      },
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Error fetching products by category",
+    });
+  }
+});
 
 // Health check with detailed status
 app.get("/health", async (req, res) => {
@@ -123,18 +209,38 @@ app.get("/", (req, res) => {
   res.json({
     message: "🛍️ E-Commerce API Server",
     version: "1.0.0",
-    documentation: "/api/docs", // You can add Swagger docs later
+    documentation: "/api/docs",
     endpoints: {
       auth: {
-        user: "/api/users",
-        admin: "/api/admin",
+        user: {
+          register: "/api/auth/register",
+          login: "/api/auth/login",
+          logout: "/api/auth/logout",
+        },
+        admin: {
+          login: "/api/admin/auth/login",
+        },
       },
-      resources: {
+      user: {
+        profile: "/api/user/profile",
+        orders: "/api/user/orders",
+        cart: "/api/user/cart",
+      },
+      admin: {
+        dashboard: "/api/admin/dashboard",
+        users: "/api/admin/users",
+        products: "/api/admin/products",
+        orders: "/api/admin/orders",
+        analytics: "/api/admin/analytics",
+      },
+      public: {
         products: "/api/products",
-        orders: "/api/orders",
-        cart: "/api/cart",
+        featured: "/api/products/featured",
+        categories: "/api/products/category/:category",
+      },
+      shared: {
         payments: "/api/payments",
-        analytics: "/api/analytics",
+        transactions: "/api/transactions",
       },
     },
     health: "/health",
@@ -217,8 +323,8 @@ const connectDB = async () => {
     const conn = await mongoose.connect(process.env.MONGO_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-      socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
     });
 
     console.log(`✅ Connected to MongoDB: ${conn.connection.host}`);
@@ -266,6 +372,13 @@ const startServer = async () => {
     console.log(`🚀 Server is running on port ${PORT}`);
     console.log(`🌐 Environment: ${process.env.NODE_ENV || "development"}`);
     console.log(`📊 Health check: http://localhost:${PORT}/health`);
+    console.log("\n📁 Route Structure:");
+    console.log("   👤 User Routes: /api/auth/*, /api/user/*");
+    console.log("   👑 Admin Routes: /api/admin/*");
+    console.log("   🔗 Shared Routes: /api/products, /api/payments");
+    console.log(
+      "   🌐 Public Routes: /api/products/featured, /api/products/category/*"
+    );
   });
 
   // Handle server errors
