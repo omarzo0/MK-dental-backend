@@ -25,6 +25,7 @@ const getAllProducts = async (req, res) => {
       category,
       status,
       featured,
+      productType,
       minPrice,
       maxPrice,
       minStock,
@@ -57,6 +58,11 @@ const getAllProducts = async (req, res) => {
     // Status filter
     if (status) {
       filter.status = status;
+    }
+
+    // Product type filter (single or package)
+    if (productType) {
+      filter.productType = productType;
     }
 
     // Featured filter
@@ -248,11 +254,19 @@ const getProductById = async (req, res) => {
 
     const { productId } = req.params;
 
-    const product = await Product.findById(productId);
+    let product = await Product.findById(productId);
     if (!product) {
       return res.status(404).json({
         success: false,
         message: "Product not found",
+      });
+    }
+
+    // Populate package items if it's a package
+    if (product.productType === "package") {
+      product = await Product.findById(productId).populate({
+        path: "packageItems.productId",
+        select: "name price images inventory status",
       });
     }
 
@@ -402,6 +416,8 @@ const createProduct = async (req, res) => {
       status = "draft",
       featured = false,
       discount,
+      productType = "single",
+      packageItems,
     } = req.body;
 
     // Check if SKU already exists
@@ -411,6 +427,33 @@ const createProduct = async (req, res) => {
         success: false,
         message: "Product with this SKU already exists",
       });
+    }
+
+    // Validate package items if product type is package
+    if (productType === "package") {
+      if (!packageItems || packageItems.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Package must contain at least one product",
+        });
+      }
+
+      // Verify all package items exist and are single products
+      for (const item of packageItems) {
+        const itemProduct = await Product.findById(item.productId);
+        if (!itemProduct) {
+          return res.status(400).json({
+            success: false,
+            message: `Product with ID ${item.productId} not found`,
+          });
+        }
+        if (itemProduct.productType === "package") {
+          return res.status(400).json({
+            success: false,
+            message: "Cannot add a package inside another package",
+          });
+        }
+      }
     }
 
     // Generate slug from name if not provided
@@ -429,6 +472,8 @@ const createProduct = async (req, res) => {
       price,
       comparePrice,
       cost,
+      productType,
+      packageItems: productType === "package" ? packageItems : [],
       inventory: {
         quantity: inventory?.quantity || 0,
         lowStockAlert: inventory?.lowStockAlert || 10,
@@ -455,11 +500,18 @@ const createProduct = async (req, res) => {
       createdBy: req.admin.adminId,
     });
 
+    // Calculate package details if it's a package
+    if (productType === "package") {
+      await product.calculatePackageDetails();
+    }
+
     await product.save();
 
     res.status(201).json({
       success: true,
-      message: "Product created successfully",
+      message: productType === "package" 
+        ? "Package created successfully" 
+        : "Product created successfully",
       data: {
         product,
       },

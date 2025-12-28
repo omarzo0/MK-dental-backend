@@ -1,0 +1,1448 @@
+{
+  "info": {
+    "_postman_id": "mk-dental-admin-api",
+    "name": "MK Dental - Admin API",
+    "description": "Complete API collection for MK Dental e-commerce platform - Admin endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "adminToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Login Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.success && jsonData.data && jsonData.data.token) {",
+                  "    pm.collectionVariables.set('adminToken', jsonData.data.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@mkdental.com\",\n  \"password\": \"AdminPassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "auth", "login"]
+            },
+            "description": "Login as admin. Token is automatically saved to collection variables."
+          },
+          "response": []
+        },
+        {
+          "name": "Register Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newadmin\",\n  \"email\": \"newadmin@mkdental.com\",\n  \"password\": \"AdminPassword123\",\n  \"firstName\": \"New\",\n  \"lastName\": \"Admin\",\n  \"role\": \"admin\",\n  \"permissions\": {\n    \"canManageProducts\": true,\n    \"canManageOrders\": true,\n    \"canManageUsers\": false,\n    \"canViewAnalytics\": true,\n    \"canManageAdmins\": false\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "auth", "register"]
+            },
+            "description": "Register a new admin. Requires canManageAdmins permission."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Admin Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/auth/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "auth", "profile"]
+            },
+            "description": "Get the current admin's profile information."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Admin Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Updated\",\n  \"lastName\": \"Admin\",\n  \"phone\": \"+1234567890\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/auth/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "auth", "profile"]
+            },
+            "description": "Update admin profile information."
+          },
+          "response": []
+        },
+        {
+          "name": "Change Admin Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"AdminPassword123\",\n  \"newPassword\": \"NewAdminPassword123\",\n  \"confirmPassword\": \"NewAdminPassword123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/auth/change-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "auth", "change-password"]
+            },
+            "description": "Change admin password."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout Admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "auth", "logout"]
+            },
+            "description": "Logout the current admin."
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "auth", "refresh"]
+            },
+            "description": "Refresh the admin JWT token."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Dashboard",
+      "item": [
+        {
+          "name": "Get Dashboard Overview",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/dashboard?period=30d",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "dashboard"],
+              "query": [
+                { "key": "period", "value": "30d", "description": "7d, 30d, 90d, 1y" }
+              ]
+            },
+            "description": "Get dashboard overview with key metrics."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Dashboard Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/dashboard/statistics?period=30d",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "dashboard", "statistics"],
+              "query": [
+                { "key": "period", "value": "30d" }
+              ]
+            },
+            "description": "Get detailed dashboard statistics."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Real-Time Data",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/dashboard/realtime",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "dashboard", "realtime"]
+            },
+            "description": "Get real-time dashboard data (active users, recent orders)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Sales Performance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/dashboard/sales-performance?period=30d&groupBy=day",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "dashboard", "sales-performance"],
+              "query": [
+                { "key": "period", "value": "30d" },
+                { "key": "groupBy", "value": "day", "description": "day, week, month" }
+              ]
+            },
+            "description": "Get sales performance analytics."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Customer Insights",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/dashboard/customer-insights?period=30d",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "dashboard", "customer-insights"],
+              "query": [
+                { "key": "period", "value": "30d" }
+              ]
+            },
+            "description": "Get customer analytics and insights."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "Get All Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products?page=1&limit=20&sortBy=createdAt&sortOrder=desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "products"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "category", "value": "", "disabled": true },
+                { "key": "status", "value": "", "disabled": true, "description": "active, inactive, draft" },
+                { "key": "productType", "value": "", "disabled": true, "description": "single, package" },
+                { "key": "featured", "value": "", "disabled": true },
+                { "key": "minPrice", "value": "", "disabled": true },
+                { "key": "maxPrice", "value": "", "disabled": true },
+                { "key": "minStock", "value": "", "disabled": true },
+                { "key": "maxStock", "value": "", "disabled": true },
+                { "key": "sortBy", "value": "createdAt" },
+                { "key": "sortOrder", "value": "desc" }
+              ]
+            },
+            "description": "Get all products with advanced filtering, pagination, and sales statistics."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Product by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products/:productId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "products", ":productId"],
+              "variable": [
+                {
+                  "key": "productId",
+                  "value": "product_id_here"
+                }
+              ]
+            },
+            "description": "Get detailed product info with analytics."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Single Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dental Mirror\",\n  \"description\": \"High-quality stainless steel dental mirror for professional use.\",\n  \"category\": \"Dental Tools\",\n  \"subcategory\": \"Examination\",\n  \"price\": 15.99,\n  \"comparePrice\": 19.99,\n  \"cost\": 8.00,\n  \"productType\": \"single\",\n  \"inventory\": {\n    \"quantity\": 100,\n    \"lowStockAlert\": 10,\n    \"trackQuantity\": true\n  },\n  \"images\": [\n    \"https://example.com/dental-mirror.jpg\"\n  ],\n  \"specifications\": {\n    \"brand\": \"MK Dental\",\n    \"model\": \"DM-100\",\n    \"material\": \"Stainless Steel\"\n  },\n  \"seo\": {\n    \"metaTitle\": \"Dental Mirror - Professional Grade\",\n    \"metaDescription\": \"High-quality dental mirror for professional dental examination.\",\n    \"slug\": \"dental-mirror-professional\"\n  },\n  \"tags\": [\"dental\", \"mirror\", \"examination\", \"tools\"],\n  \"status\": \"active\",\n  \"featured\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "products"]
+            },
+            "description": "Create a new single product."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Package Product",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Dental Starter Kit\",\n  \"description\": \"Complete starter kit for dental clinics. Includes essential examination tools.\",\n  \"category\": \"Kits\",\n  \"subcategory\": \"Starter Kits\",\n  \"price\": 299.99,\n  \"comparePrice\": 399.99,\n  \"productType\": \"package\",\n  \"packageItems\": [\n    {\n      \"productId\": \"product_id_1\",\n      \"quantity\": 5\n    },\n    {\n      \"productId\": \"product_id_2\",\n      \"quantity\": 3\n    },\n    {\n      \"productId\": \"product_id_3\",\n      \"quantity\": 2\n    }\n  ],\n  \"inventory\": {\n    \"quantity\": 50,\n    \"lowStockAlert\": 5\n  },\n  \"images\": [\n    \"https://example.com/dental-kit.jpg\"\n  ],\n  \"seo\": {\n    \"metaTitle\": \"Dental Starter Kit - Complete Package\",\n    \"metaDescription\": \"Save money with our complete dental starter kit.\",\n    \"slug\": \"dental-starter-kit\"\n  },\n  \"tags\": [\"kit\", \"starter\", \"bundle\", \"savings\"],\n  \"status\": \"active\",\n  \"featured\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "products"]
+            },
+            "description": "Create a new package product (bundle of multiple products).\n\n**Package Fields:**\n- productType: Must be 'package'\n- packageItems: Array of products with productId and quantity\n- price: Package price (should be less than sum of items for savings)\n\n**Auto-calculated:**\n- packageDetails.totalItemsCount\n- packageDetails.originalTotalPrice\n- packageDetails.savings\n- packageDetails.savingsPercentage"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Product",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Product Name\",\n  \"price\": 24.99,\n  \"status\": \"active\",\n  \"featured\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products/:productId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "products", ":productId"],
+              "variable": [
+                {
+                  "key": "productId",
+                  "value": "product_id_here"
+                }
+              ]
+            },
+            "description": "Update an existing product. Only include fields to update."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Product",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products/:productId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "products", ":productId"],
+              "variable": [
+                {
+                  "key": "productId",
+                  "value": "product_id_here"
+                }
+              ]
+            },
+            "description": "Delete a product."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Product Inventory",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"quantity\": 150,\n  \"lowStockAlert\": 15,\n  \"operation\": \"set\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products/:productId/inventory",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "products", ":productId", "inventory"],
+              "variable": [
+                {
+                  "key": "productId",
+                  "value": "product_id_here"
+                }
+              ]
+            },
+            "description": "Update product inventory.\n\n**Operations:**\n- set: Set exact quantity\n- add: Add to current quantity\n- subtract: Subtract from current quantity"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Low Stock Alerts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products/alerts/low-stock?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "products", "alerts", "low-stock"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            },
+            "description": "Get products with low stock alerts."
+          },
+          "response": []
+        },
+        {
+          "name": "Bulk Product Operations",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"operation\": \"updateStatus\",\n  \"productIds\": [\n    \"product_id_1\",\n    \"product_id_2\",\n    \"product_id_3\"\n  ],\n  \"data\": {\n    \"status\": \"active\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/products/bulk",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "products", "bulk"]
+            },
+            "description": "Perform bulk operations on products.\n\n**Operations:**\n- updateStatus: Change status (active/inactive/draft)\n- updateFeatured: Set featured flag\n- delete: Delete multiple products\n- updateCategory: Change category"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Orders",
+      "item": [
+        {
+          "name": "Get All Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/orders?page=1&limit=20&sortBy=createdAt&sortOrder=desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "orders"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "status", "value": "", "disabled": true, "description": "pending, confirmed, shipped, delivered, cancelled" },
+                { "key": "paymentStatus", "value": "", "disabled": true, "description": "pending, paid, failed, refunded" },
+                { "key": "search", "value": "", "disabled": true, "description": "Order number or customer email" },
+                { "key": "dateFrom", "value": "", "disabled": true },
+                { "key": "dateTo", "value": "", "disabled": true },
+                { "key": "minTotal", "value": "", "disabled": true },
+                { "key": "maxTotal", "value": "", "disabled": true },
+                { "key": "sortBy", "value": "createdAt" },
+                { "key": "sortOrder", "value": "desc" }
+              ]
+            },
+            "description": "Get all orders with filtering and pagination."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Order by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/orders/:orderId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "orders", ":orderId"],
+              "variable": [
+                {
+                  "key": "orderId",
+                  "value": "order_id_here"
+                }
+              ]
+            },
+            "description": "Get detailed order information. Includes package info for package products."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Order Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/orders/stats/overview?period=30d",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "orders", "stats", "overview"],
+              "query": [
+                { "key": "period", "value": "30d" }
+              ]
+            },
+            "description": "Get order statistics overview."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Order Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/orders/analytics?period=30d",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "orders", "analytics"],
+              "query": [
+                { "key": "period", "value": "30d" }
+              ]
+            },
+            "description": "Get detailed order analytics."
+          },
+          "response": []
+        },
+        {
+          "name": "Export Orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/orders/export?format=csv&dateFrom=2025-01-01&dateTo=2025-12-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "orders", "export"],
+              "query": [
+                { "key": "format", "value": "csv", "description": "csv, excel, json" },
+                { "key": "dateFrom", "value": "2025-01-01" },
+                { "key": "dateTo", "value": "2025-12-31" },
+                { "key": "status", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Export orders to file."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Order Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"shipped\",\n  \"trackingNumber\": \"TRK123456789\",\n  \"notes\": \"Shipped via FedEx\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/orders/:orderId/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "orders", ":orderId", "status"],
+              "variable": [
+                {
+                  "key": "orderId",
+                  "value": "order_id_here"
+                }
+              ]
+            },
+            "description": "Update order status.\n\n**Statuses:**\n- pending\n- confirmed\n- shipped (include trackingNumber)\n- delivered\n- cancelled"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Payment Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentStatus\": \"paid\",\n  \"transactionId\": \"txn_123456\",\n  \"notes\": \"Payment confirmed manually\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/orders/:orderId/payment-status",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "orders", ":orderId", "payment-status"],
+              "variable": [
+                {
+                  "key": "orderId",
+                  "value": "order_id_here"
+                }
+              ]
+            },
+            "description": "Update payment status.\n\n**Payment Statuses:**\n- pending\n- paid\n- failed\n- refunded"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Order",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/orders/:orderId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "orders", ":orderId"],
+              "variable": [
+                {
+                  "key": "orderId",
+                  "value": "order_id_here"
+                }
+              ]
+            },
+            "description": "Delete an order (soft delete)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users?page=1&limit=20&sortBy=createdAt&sortOrder=desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "search", "value": "", "disabled": true },
+                { "key": "status", "value": "", "disabled": true, "description": "active, inactive" },
+                { "key": "sortBy", "value": "createdAt" },
+                { "key": "sortOrder", "value": "desc" }
+              ]
+            },
+            "description": "Get all users with filtering and pagination."
+          },
+          "response": []
+        },
+        {
+          "name": "Search Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/search?q=john",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", "search"],
+              "query": [
+                { "key": "q", "value": "john" }
+              ]
+            },
+            "description": "Search users by name, email, or username."
+          },
+          "response": []
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/:userId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", ":userId"],
+              "variable": [
+                {
+                  "key": "userId",
+                  "value": "user_id_here"
+                }
+              ]
+            },
+            "description": "Get detailed user information."
+          },
+          "response": []
+        },
+        {
+          "name": "Get User Activity",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/:userId/activity",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", ":userId", "activity"],
+              "variable": [
+                {
+                  "key": "userId",
+                  "value": "user_id_here"
+                }
+              ]
+            },
+            "description": "Get user's activity history (orders, logins, etc.)."
+          },
+          "response": []
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"newuser\",\n  \"email\": \"newuser@example.com\",\n  \"password\": \"Password123\",\n  \"profile\": {\n    \"firstName\": \"New\",\n    \"lastName\": \"User\",\n    \"phone\": \"+1234567890\"\n  },\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users"]
+            },
+            "description": "Create a new user account."
+          },
+          "response": []
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"profile\": {\n    \"firstName\": \"Updated\",\n    \"lastName\": \"Name\"\n  },\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/:userId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", ":userId"],
+              "variable": [
+                {
+                  "key": "userId",
+                  "value": "user_id_here"
+                }
+              ]
+            },
+            "description": "Update user information."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete User",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/:userId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", ":userId"],
+              "variable": [
+                {
+                  "key": "userId",
+                  "value": "user_id_here"
+                }
+              ]
+            },
+            "description": "Delete a user account."
+          },
+          "response": []
+        },
+        {
+          "name": "Bulk User Operations",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"operation\": \"deactivate\",\n  \"userIds\": [\n    \"user_id_1\",\n    \"user_id_2\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users/bulk",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "users", "bulk"]
+            },
+            "description": "Perform bulk operations on users.\n\n**Operations:**\n- activate\n- deactivate\n- delete"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Shipping",
+      "item": [
+        {
+          "name": "Get All Shipping Fees",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/shipping?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "shipping"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "isActive", "value": "", "disabled": true }
+              ]
+            },
+            "description": "Get all shipping fee configurations."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Shipping Fee by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/shipping/:shippingId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "shipping", ":shippingId"],
+              "variable": [
+                {
+                  "key": "shippingId",
+                  "value": "shipping_id_here"
+                }
+              ]
+            },
+            "description": "Get shipping fee details."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Shipping Fee",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Express Shipping\",\n  \"description\": \"2-3 business days delivery\",\n  \"fee\": 15.99,\n  \"estimatedDelivery\": {\n    \"minDays\": 2,\n    \"maxDays\": 3\n  },\n  \"regions\": [\"USA\", \"Canada\"],\n  \"minOrderValue\": 0,\n  \"freeShippingThreshold\": 100,\n  \"isActive\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/shipping",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "shipping"]
+            },
+            "description": "Create a new shipping fee option."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Shipping Fee",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fee\": 12.99,\n  \"freeShippingThreshold\": 75\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/shipping/:shippingId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "shipping", ":shippingId"],
+              "variable": [
+                {
+                  "key": "shippingId",
+                  "value": "shipping_id_here"
+                }
+              ]
+            },
+            "description": "Update shipping fee configuration."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Shipping Fee",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/shipping/:shippingId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "shipping", ":shippingId"],
+              "variable": [
+                {
+                  "key": "shippingId",
+                  "value": "shipping_id_here"
+                }
+              ]
+            },
+            "description": "Delete a shipping fee option."
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle Shipping Fee Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/shipping/:shippingId/toggle",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "shipping", ":shippingId", "toggle"],
+              "variable": [
+                {
+                  "key": "shippingId",
+                  "value": "shipping_id_here"
+                }
+              ]
+            },
+            "description": "Toggle shipping fee active/inactive status."
+          },
+          "response": []
+        },
+        {
+          "name": "Set Default Shipping Fee",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/shipping/:shippingId/set-default",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "shipping", ":shippingId", "set-default"],
+              "variable": [
+                {
+                  "key": "shippingId",
+                  "value": "shipping_id_here"
+                }
+              ]
+            },
+            "description": "Set a shipping fee as the default option."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reviews",
+      "item": [
+        {
+          "name": "Get All Reviews",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reviews?page=1&limit=20&sortBy=createdAt&sortOrder=desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "reviews"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" },
+                { "key": "status", "value": "", "disabled": true, "description": "pending, approved, rejected" },
+                { "key": "rating", "value": "", "disabled": true, "description": "1-5" },
+                { "key": "productId", "value": "", "disabled": true },
+                { "key": "sortBy", "value": "createdAt" },
+                { "key": "sortOrder", "value": "desc" }
+              ]
+            },
+            "description": "Get all reviews with filtering."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Review Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reviews/stats",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "reviews", "stats"]
+            },
+            "description": "Get review statistics (pending count, average rating, etc.)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Review by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reviews/:reviewId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "reviews", ":reviewId"],
+              "variable": [
+                {
+                  "key": "reviewId",
+                  "value": "review_id_here"
+                }
+              ]
+            },
+            "description": "Get review details."
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Review",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reviews/:reviewId/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "reviews", ":reviewId", "approve"],
+              "variable": [
+                {
+                  "key": "reviewId",
+                  "value": "review_id_here"
+                }
+              ]
+            },
+            "description": "Approve a pending review."
+          },
+          "response": []
+        },
+        {
+          "name": "Reject Review",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Inappropriate content\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reviews/:reviewId/reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "reviews", ":reviewId", "reject"],
+              "variable": [
+                {
+                  "key": "reviewId",
+                  "value": "review_id_here"
+                }
+              ]
+            },
+            "description": "Reject a review with reason."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Seller Response",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"response\": \"Thank you for your feedback! We appreciate your business.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reviews/:reviewId/respond",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "reviews", ":reviewId", "respond"],
+              "variable": [
+                {
+                  "key": "reviewId",
+                  "value": "review_id_here"
+                }
+              ]
+            },
+            "description": "Add a seller response to a review."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Review",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reviews/:reviewId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "reviews", ":reviewId"],
+              "variable": [
+                {
+                  "key": "reviewId",
+                  "value": "review_id_here"
+                }
+              ]
+            },
+            "description": "Delete a review."
+          },
+          "response": []
+        },
+        {
+          "name": "Bulk Approve Reviews",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reviewIds\": [\n    \"review_id_1\",\n    \"review_id_2\",\n    \"review_id_3\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reviews/bulk-approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "reviews", "bulk-approve"]
+            },
+            "description": "Approve multiple reviews at once."
+          },
+          "response": []
+        },
+        {
+          "name": "Bulk Reject Reviews",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reviewIds\": [\n    \"review_id_1\",\n    \"review_id_2\"\n  ],\n  \"reason\": \"Spam content\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/reviews/bulk-reject",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "admin", "reviews", "bulk-reject"]
+            },
+            "description": "Reject multiple reviews at once."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

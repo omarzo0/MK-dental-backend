@@ -206,10 +206,26 @@ const createOrder = async (req, res) => {
         continue;
       }
 
+      // For package products, also check if all package items are available
+      if (product.productType === "package" && product.packageItems) {
+        for (const pkgItem of product.packageItems) {
+          const pkgProduct = await Product.findById(pkgItem.productId);
+          if (!pkgProduct || pkgProduct.status !== "active") {
+            outOfStockItems.push({
+              productId: product._id,
+              name: product.name,
+              reason: `Package item "${pkgItem.name}" is no longer available`,
+            });
+            break;
+          }
+        }
+      }
+
       const itemTotal = product.price * cartItem.quantity;
       subtotal += itemTotal;
 
-      orderItems.push({
+      // Build order item
+      const orderItem = {
         productId: product._id,
         name: product.name,
         price: product.price,
@@ -217,7 +233,27 @@ const createOrder = async (req, res) => {
         subtotal: itemTotal,
         image: product.images?.[0],
         sku: product.sku,
-      });
+        productType: product.productType || "single",
+      };
+
+      // Add package info if it's a package product
+      if (product.productType === "package") {
+        orderItem.packageInfo = {
+          totalItemsCount: product.packageDetails?.totalItemsCount || 0,
+          originalTotalPrice: product.packageDetails?.originalTotalPrice || 0,
+          savings: product.packageDetails?.savings || 0,
+          savingsPercentage: product.packageDetails?.savingsPercentage || 0,
+          items: product.packageItems?.map(item => ({
+            productId: item.productId,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            image: item.image,
+          })) || [],
+        };
+      }
+
+      orderItems.push(orderItem);
     }
 
     // Check if any items are out of stock

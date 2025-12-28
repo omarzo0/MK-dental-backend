@@ -851,4 +851,497 @@ module.exports = {
   getOrderStats,
   exportOrders,
   getOrderAnalytics,
+  processRefund,
+  addOrderNote,
+  getOrderNotes,
+  generateInvoice,
+  cancelOrder,
 };
+
+/**
+ * @desc    Process refund for an order
+ * @route   POST /api/admin/orders/:id/refund
+ * @access  Private/Admin
+ */
+async function processRefund(req, res) {
+  try {
+    const { id } = req.params;
+    const { amount, reason, refundType = "full" } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order ID",
+      });
+    }
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // Check if order is eligible for refund
+    if (order.paymentStatus !== "paid") {
+      return res.status(400).json({
+        success: false,
+        message: "Order must be paid to process a refund",
+      });
+    }
+
+    // Calculate refund amount
+    let refundAmount = order.totals.total;
+    if (refundType === "partial" && amount) {
+      if (amount > order.totals.total) {
+        return res.status(400).json({
+          success: false,
+          message: "Refund amount cannot exceed order total",
+        });
+      }
+      refundAmount = amount;
+    }
+
+    // Update payment record
+    const payment = await Payment.findOneAndUpdate(
+      { orderId: id },
+      {
+        status: refundType === "full" ? "refunded" : "partially_refunded",
+        refundAmount,
+        refundReason: reason,
+        refundDate: new Date(),
+        processedBy: req.admin.adminId,
+      },
+      { new: true }
+    );
+
+    // Update order
+    order.paymentStatus = refundType === "full" ? "refunded" : "partially_refunded";
+    order.refund = {
+      amount: refundAmount,
+      reason,
+      type: refundType,
+      processedAt: new Date(),
+      processedBy: req.admin.adminId,
+    };
+    order.handledBy = req.admin.adminId;
+    await order.save();
+
+    // If full refund, restore inventory
+    if (refundType === "full") {
+      for (const item of order.items) {
+        await Product.findByIdAndUpdate(item.productId, {
+          $inc: { "inventory.quantity": item.quantity },
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Refund of $${refundAmount.toFixed(2)} processed successfully`,
+      data: {
+        order,
+        payment,
+        refund: {
+          amount: refundAmount,
+          type: refundType,
+          reason,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Process refund error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error processing refund",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+}
+
+/**
+ * @desc    Add note to order
+ * @route   POST /api/admin/orders/:id/notes
+ * @access  Private/Admin
+ */
+async function addOrderNote(req, res) {
+  try {
+    const { id } = req.params;
+    const { note, isPrivate = true } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order ID",
+      });
+    }
+
+    if (!note || note.trim().length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Note content is required",
+      });
+    }
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // Initialize notes array if not exists
+    if (!order.notes) {
+      order.notes = [];
+    }
+
+    const newNote = {
+      _id: new mongoose.Types.ObjectId(),
+      content: note.trim(),
+      isPrivate,
+      createdBy: req.admin.adminId,
+      createdAt: new Date(),
+    };
+
+    order.notes.push(newNote);
+    await order.save();
+
+    res.status(201).json({
+      success: true,
+      message: "Note added successfully",
+      data: { note: newNote },
+    });
+  } catch (error) {
+    console.error("Add order note error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error adding order note",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+}
+
+/**
+ * @desc    Get order notes
+ * @route   GET /api/admin/orders/:id/notes
+ * @access  Private/Admin
+ */
+async function getOrderNotes(req, res) {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order ID",
+      });
+    }
+
+    const order = await Order.findById(id)
+      .select("notes orderNumber")
+      .populate("notes.createdBy", "username profile.firstName profile.lastName");
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        orderNumber: order.orderNumber,
+        notes: order.notes || [],
+      },
+    });
+  } catch (error) {
+    console.error("Get order notes error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching order notes",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+}
+
+/**
+ * @desc    Generate invoice for order
+ * @route   GET /api/admin/orders/:id/invoice
+ * @access  Private/Admin
+ */
+async function generateInvoice(req, res) {
+  try {
+    const { id } = req.params;
+    const { format = "json" } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order ID",
+      });
+    }
+
+    const order = await Order.findById(id)
+      .populate("userId", "email profile.firstName profile.lastName profile.phone")
+      .populate("items.productId", "name sku");
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // Generate invoice data
+    const invoiceData = {
+      invoiceNumber: `INV-${order.orderNumber}`,
+      invoiceDate: new Date(),
+      orderNumber: order.orderNumber,
+      orderDate: order.createdAt,
+      
+      // Customer details
+      customer: {
+        name: `${order.customer.firstName} ${order.customer.lastName}`,
+        email: order.customer.email,
+        phone: order.customer.phone || "",
+      },
+      
+      // Billing address
+      billingAddress: order.shippingAddress,
+      
+      // Shipping address
+      shippingAddress: order.shippingAddress,
+      
+      // Items
+      items: order.items.map((item) => ({
+        name: item.name,
+        sku: item.productId?.sku || "N/A",
+        quantity: item.quantity,
+        unitPrice: item.price,
+        subtotal: item.subtotal,
+      })),
+      
+      // Totals
+      subtotal: order.totals.subtotal,
+      discount: order.totals.discount || 0,
+      tax: order.totals.tax || 0,
+      shipping: order.totals.shipping || 0,
+      total: order.totals.total,
+      
+      // Payment info
+      paymentStatus: order.paymentStatus,
+      paymentMethod: order.paymentMethod || "N/A",
+      
+      // Company info (should come from settings)
+      company: {
+        name: "MK Dental",
+        address: "",
+        phone: "",
+        email: "",
+        website: "",
+      },
+      
+      // Notes
+      notes: order.notes?.filter((n) => !n.isPrivate).map((n) => n.content) || [],
+    };
+
+    // Return based on format
+    if (format === "html") {
+      // Generate simple HTML invoice
+      const htmlInvoice = generateHtmlInvoice(invoiceData);
+      res.setHeader("Content-Type", "text/html");
+      return res.send(htmlInvoice);
+    }
+
+    res.json({
+      success: true,
+      data: { invoice: invoiceData },
+    });
+  } catch (error) {
+    console.error("Generate invoice error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error generating invoice",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+}
+
+// Helper function to generate HTML invoice
+function generateHtmlInvoice(data) {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Invoice ${data.invoiceNumber}</title>
+      <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #333; padding-bottom: 20px; }
+        .invoice-details { text-align: right; }
+        .addresses { display: flex; justify-content: space-between; margin: 20px 0; }
+        .address { width: 45%; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #f5f5f5; }
+        .totals { text-align: right; }
+        .total-row { font-weight: bold; font-size: 1.2em; }
+        @media print { body { margin: 0; } }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="company">
+          <h1>${data.company.name}</h1>
+        </div>
+        <div class="invoice-details">
+          <h2>INVOICE</h2>
+          <p><strong>Invoice #:</strong> ${data.invoiceNumber}</p>
+          <p><strong>Date:</strong> ${new Date(data.invoiceDate).toLocaleDateString()}</p>
+          <p><strong>Order #:</strong> ${data.orderNumber}</p>
+        </div>
+      </div>
+      
+      <div class="addresses">
+        <div class="address">
+          <h3>Bill To:</h3>
+          <p>${data.customer.name}</p>
+          <p>${data.customer.email}</p>
+          <p>${data.customer.phone}</p>
+        </div>
+        <div class="address">
+          <h3>Ship To:</h3>
+          <p>${data.shippingAddress.street}</p>
+          <p>${data.shippingAddress.city}, ${data.shippingAddress.state} ${data.shippingAddress.postalCode}</p>
+          <p>${data.shippingAddress.country}</p>
+        </div>
+      </div>
+      
+      <table>
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>SKU</th>
+            <th>Qty</th>
+            <th>Price</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.items.map((item) => `
+            <tr>
+              <td>${item.name}</td>
+              <td>${item.sku}</td>
+              <td>${item.quantity}</td>
+              <td>$${item.unitPrice.toFixed(2)}</td>
+              <td>$${item.subtotal.toFixed(2)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+      
+      <div class="totals">
+        <p>Subtotal: $${data.subtotal.toFixed(2)}</p>
+        ${data.discount > 0 ? `<p>Discount: -$${data.discount.toFixed(2)}</p>` : ""}
+        <p>Tax: $${data.tax.toFixed(2)}</p>
+        <p>Shipping: $${data.shipping.toFixed(2)}</p>
+        <p class="total-row">Total: $${data.total.toFixed(2)}</p>
+      </div>
+      
+      <p><strong>Payment Status:</strong> ${data.paymentStatus}</p>
+    </body>
+    </html>
+  `;
+}
+
+/**
+ * @desc    Cancel order with reason
+ * @route   POST /api/admin/orders/:id/cancel
+ * @access  Private/Admin
+ */
+async function cancelOrder(req, res) {
+  try {
+    const { id } = req.params;
+    const { reason, refund = false } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order ID",
+      });
+    }
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // Check if order can be cancelled
+    if (["delivered", "cancelled"].includes(order.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot cancel order with status: ${order.status}`,
+      });
+    }
+
+    // Update order
+    order.status = "cancelled";
+    order.cancellation = {
+      reason,
+      cancelledAt: new Date(),
+      cancelledBy: req.admin.adminId,
+    };
+    order.handledBy = req.admin.adminId;
+
+    // Process refund if requested and order was paid
+    if (refund && order.paymentStatus === "paid") {
+      order.paymentStatus = "refunded";
+      order.refund = {
+        amount: order.totals.total,
+        reason: `Order cancelled: ${reason}`,
+        type: "full",
+        processedAt: new Date(),
+        processedBy: req.admin.adminId,
+      };
+
+      await Payment.findOneAndUpdate(
+        { orderId: id },
+        {
+          status: "refunded",
+          refundAmount: order.totals.total,
+          refundReason: reason,
+          refundDate: new Date(),
+          processedBy: req.admin.adminId,
+        }
+      );
+    }
+
+    await order.save();
+
+    // Restore inventory
+    for (const item of order.items) {
+      await Product.findByIdAndUpdate(item.productId, {
+        $inc: { "inventory.quantity": item.quantity },
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Order cancelled successfully",
+      data: { order },
+    });
+  } catch (error) {
+    console.error("Cancel order error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error cancelling order",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+}

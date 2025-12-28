@@ -44,8 +44,7 @@ wishlistSchema.pre("save", function (next) {
   next();
 });
 
-// Index for faster queries
-wishlistSchema.index({ userId: 1 });
+// Index for faster queries (userId already indexed via unique: true)
 wishlistSchema.index({ "items.productId": 1 });
 
 module.exports = mongoose.model("Wishlist", wishlistSchema);

@@ -24,6 +24,26 @@ const cartItemSchema = new mongoose.Schema({
   image: {
     type: String,
   },
+  // Product type: single or package
+  productType: {
+    type: String,
+    enum: ["single", "package"],
+    default: "single",
+  },
+  // Package details (only for package products)
+  packageInfo: {
+    totalItemsCount: { type: Number },
+    originalTotalPrice: { type: Number },
+    savings: { type: Number },
+    savingsPercentage: { type: Number },
+    items: [{
+      productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
+      name: { type: String },
+      quantity: { type: Number },
+      price: { type: Number },
+      image: { type: String },
+    }],
+  },
   discount: {
     type: {
       type: String,
@@ -205,7 +225,8 @@ cartSchema.methods.addItem = function (product, quantity = 1) {
       };
     }
     
-    this.items.push({
+    // Build cart item object
+    const cartItem = {
       productId: product._id,
       quantity: quantity,
       price: product.price,
@@ -213,7 +234,27 @@ cartSchema.methods.addItem = function (product, quantity = 1) {
       image: product.images?.[0],
       sku: product.sku,
       maxQuantity: availableStock,
-    });
+      productType: product.productType || "single",
+    };
+
+    // Add package info if it's a package product
+    if (product.productType === "package" && product.packageItems) {
+      cartItem.packageInfo = {
+        totalItemsCount: product.packageDetails?.totalItemsCount || 0,
+        originalTotalPrice: product.packageDetails?.originalTotalPrice || 0,
+        savings: product.packageDetails?.savings || 0,
+        savingsPercentage: product.packageDetails?.savingsPercentage || 0,
+        items: product.packageItems.map(item => ({
+          productId: item.productId,
+          name: item.name,
+          quantity: item.quantity,
+          price: item.price,
+          image: item.image,
+        })),
+      };
+    }
+    
+    this.items.push(cartItem);
     
     this.calculateTotals();
     return { success: true, quantity: quantity };

@@ -75,7 +75,50 @@ const requirePermission = (permission) => {
   };
 };
 
+// Check permission middleware (alias for requirePermission)
+const checkPermission = (permission) => {
+  return (req, res, next) => {
+    // Super admin has all permissions
+    if (req.admin.role === "superadmin") {
+      return next();
+    }
+    
+    if (!req.admin.permissions || !req.admin.permissions[permission]) {
+      return res.status(403).json({
+        success: false,
+        message: `Access denied. Required permission: ${permission}`,
+      });
+    }
+    next();
+  };
+};
+
+// Super Admin only middleware
+const isSuperAdmin = async (req, res, next) => {
+  try {
+    const Admin = require("../models/Admin");
+    const admin = await Admin.findById(req.admin.adminId);
+    
+    if (!admin || admin.role !== "superadmin") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Super admin privileges required.",
+      });
+    }
+    
+    next();
+  } catch (error) {
+    console.error("Super admin check error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error during authorization check",
+    });
+  }
+};
+
 module.exports = {
   adminAuth,
   requirePermission,
+  checkPermission,
+  isSuperAdmin,
 };

@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { adminAuth, requirePermission } = require("../../middleware/adminAuth");
+const { adminAuth, requirePermission, checkPermission } = require("../../middleware/adminAuth");
 
 const {
   getAllOrders,
@@ -11,6 +11,11 @@ const {
   getOrderStats,
   exportOrders,
   getOrderAnalytics,
+  processRefund,
+  addOrderNote,
+  getOrderNotes,
+  generateInvoice,
+  cancelOrder,
 } = require("../../controllers/admin/orderManagementController");
 
 const {
@@ -27,7 +32,7 @@ router.use(adminAuth);
 // Get all orders with filtering and pagination
 router.get(
   "/",
-  requirePermission("canViewOrders"),
+  checkPermission("canManageOrders"),
   validateOrderQuery,
   getAllOrders
 );
@@ -35,7 +40,7 @@ router.get(
 // Get order statistics
 router.get(
   "/stats/overview",
-  requirePermission("canViewAnalytics"),
+  checkPermission("canViewAnalytics"),
   validateOrderAnalytics,
   getOrderStats
 );
@@ -43,7 +48,7 @@ router.get(
 // Export orders
 router.get(
   "/export",
-  requirePermission("canExportOrders"),
+  checkPermission("canManageOrders"),
   validateOrderExport,
   exportOrders
 );
@@ -51,18 +56,18 @@ router.get(
 // Get order analytics
 router.get(
   "/analytics",
-  requirePermission("canViewAnalytics"),
+  checkPermission("canViewAnalytics"),
   validateOrderAnalytics,
   getOrderAnalytics
 );
 
 // Get specific order by ID
-router.get("/:id", requirePermission("canViewOrders"), getOrderById);
+router.get("/:id", checkPermission("canManageOrders"), getOrderById);
 
 // Update order status
 router.put(
   "/:id/status",
-  requirePermission("canUpdateOrders"),
+  checkPermission("canManageOrders"),
   validateOrderStatusUpdate,
   updateOrderStatus
 );
@@ -70,12 +75,46 @@ router.put(
 // Update payment status
 router.put(
   "/:id/payment-status",
-  requirePermission("canUpdateOrders"),
+  checkPermission("canManageOrders"),
   validatePaymentStatusUpdate,
   updatePaymentStatus
 );
 
+// Process refund
+router.post(
+  "/:id/refund",
+  checkPermission("canManagePayments"),
+  processRefund
+);
+
+// Cancel order
+router.post(
+  "/:id/cancel",
+  checkPermission("canManageOrders"),
+  cancelOrder
+);
+
+// Order notes
+router.get(
+  "/:id/notes",
+  checkPermission("canManageOrders"),
+  getOrderNotes
+);
+
+router.post(
+  "/:id/notes",
+  checkPermission("canManageOrders"),
+  addOrderNote
+);
+
+// Generate invoice
+router.get(
+  "/:id/invoice",
+  checkPermission("canManageOrders"),
+  generateInvoice
+);
+
 // Delete order (soft delete)
-router.delete("/:id", requirePermission("canDeleteOrders"), deleteOrder);
+router.delete("/:id", checkPermission("canManageOrders"), deleteOrder);
 
 module.exports = router;

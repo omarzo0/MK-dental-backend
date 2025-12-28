@@ -75,6 +75,9 @@ const adminProductRoutes = require("./src/routes/admin/productRoutes");
 const adminOrderRoutes = require("./src/routes/admin/orderRoutes");
 const adminShippingRoutes = require("./src/routes/admin/shippingRoutes");
 const adminReviewRoutes = require("./src/routes/admin/reviewRoutes");
+const adminCouponRoutes = require("./src/routes/admin/couponRoutes");
+const adminCategoryRoutes = require("./src/routes/admin/categoryRoutes");
+const adminSettingsRoutes = require("./src/routes/admin/settingsRoutes");
 
 // Shared Routes
 const sharedProductRoutes = require("./src/routes/shared/productRoutes");
@@ -100,6 +103,9 @@ app.use("/api/admin/products", adminProductRoutes);
 app.use("/api/admin/orders", adminOrderRoutes);
 app.use("/api/admin/shipping", adminShippingRoutes);
 app.use("/api/admin/reviews", adminReviewRoutes);
+app.use("/api/admin/coupons", adminCouponRoutes);
+app.use("/api/admin/categories", adminCategoryRoutes);
+app.use("/api/admin/settings", adminSettingsRoutes);
 
 // Shared API Routes
 app.use("/api/products", sharedProductRoutes);
@@ -331,8 +337,6 @@ process.on("uncaughtException", (err) => {
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     });

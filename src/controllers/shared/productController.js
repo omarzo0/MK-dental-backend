@@ -24,6 +24,7 @@ const getAllProducts = async (req, res) => {
       maxPrice,
       status = "active",
       featured,
+      productType,
       sortBy = "createdAt",
       sortOrder = "desc",
     } = req.query;
@@ -36,6 +37,11 @@ const getAllProducts = async (req, res) => {
       if (status) filter.status = status;
     } else {
       filter.status = "active";
+    }
+
+    // Product type filter (single or package)
+    if (productType) {
+      filter.productType = productType;
     }
 
     // Category filter
@@ -135,7 +141,7 @@ const getProductById = async (req, res) => {
 
     const { productId } = req.params;
 
-    const product = await Product.findById(productId);
+    let product = await Product.findById(productId);
     if (!product) {
       return res.status(404).json({
         success: false,
@@ -151,6 +157,14 @@ const getProductById = async (req, res) => {
       });
     }
 
+    // Populate package items if it's a package
+    if (product.productType === "package") {
+      product = await Product.findById(productId).populate({
+        path: "packageItems.productId",
+        select: "name price images inventory status seo.slug",
+      });
+    }
+
     // Get related products (same category)
     const relatedProducts = await Product.find({
       category: product.category,
@@ -158,7 +172,7 @@ const getProductById = async (req, res) => {
       _id: { $ne: productId },
     })
       .limit(4)
-      .select("name price images slug");
+      .select("name price images slug productType packageDetails");
 
     res.json({
       success: true,

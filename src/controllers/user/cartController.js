@@ -9,7 +9,7 @@ const getCart = async (req, res) => {
   try {
     const cart = await Cart.findOne({ userId: req.user.userId }).populate(
       "items.productId",
-      "name price images inventory slug"
+      "name price images inventory slug productType packageDetails packageItems"
     );
 
     if (!cart) {
@@ -73,13 +73,31 @@ const addToCart = async (req, res) => {
 
     const { productId, quantity = 1 } = req.body;
 
-    // Get product details
-    const product = await Product.findById(productId);
+    // Get product details (with package items if it's a package)
+    let product = await Product.findById(productId);
     if (!product) {
       return res.status(404).json({
         success: false,
         message: "Product not found",
       });
+    }
+
+    // If it's a package, populate package items
+    if (product.productType === "package") {
+      product = await Product.findById(productId).populate({
+        path: "packageItems.productId",
+        select: "name price images inventory status",
+      });
+      
+      // Check if all package items are available
+      for (const pkgItem of product.packageItems) {
+        if (!pkgItem.productId || pkgItem.productId.status !== "active") {
+          return res.status(400).json({
+            success: false,
+            message: `Package item "${pkgItem.name}" is not available`,
+          });
+        }
+      }
     }
 
     // Check product availability

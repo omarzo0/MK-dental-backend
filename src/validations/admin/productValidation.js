@@ -31,6 +31,11 @@ const validateGetProducts = [
     .isBoolean()
     .withMessage("Featured must be a boolean"),
 
+  query("productType")
+    .optional()
+    .isIn(["single", "package"])
+    .withMessage("Product type must be 'single' or 'package'"),
+
   query("sortBy")
     .optional()
     .isIn(["name", "price", "createdAt", "updatedAt", "inventory.quantity"])
@@ -102,6 +107,28 @@ const validateCreateProduct = [
     .optional()
     .isBoolean()
     .withMessage("Featured must be a boolean"),
+
+  // Product type validation
+  body("productType")
+    .optional()
+    .isIn(["single", "package"])
+    .withMessage("Product type must be 'single' or 'package'"),
+
+  // Package items validation
+  body("packageItems")
+    .optional()
+    .isArray()
+    .withMessage("Package items must be an array"),
+
+  body("packageItems.*.productId")
+    .optional()
+    .isMongoId()
+    .withMessage("Each package item must have a valid product ID"),
+
+  body("packageItems.*.quantity")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("Package item quantity must be at least 1"),
 
   body("tags").optional().isArray().withMessage("Tags must be an array"),
 
