@@ -12,7 +12,7 @@ const getWishlist = async (req, res) => {
       {
         path: "items.productId",
         select:
-          "name price comparePrice images inventory.quantity status discount category",
+          "name price images inventory.quantity status category",
       }
     );
 
@@ -29,9 +29,7 @@ const getWishlist = async (req, res) => {
     // Calculate price changes
     const itemsWithPriceChanges = validItems.map((item) => {
       const product = item.productId;
-      const currentPrice = product.discount?.isActive
-        ? product.discount.discountedPrice
-        : product.price;
+      const currentPrice = product.price;
       const priceChange = item.priceAtAdd
         ? currentPrice - item.priceAtAdd
         : null;
@@ -42,12 +40,10 @@ const getWishlist = async (req, res) => {
           _id: product._id,
           name: product.name,
           price: product.price,
-          comparePrice: product.comparePrice,
           images: product.images,
           inStock: product.inventory?.quantity > 0,
           stockQuantity: product.inventory?.quantity,
           status: product.status,
-          discount: product.discount,
           category: product.category,
         },
         addedAt: item.addedAt,
@@ -126,9 +122,7 @@ const addToWishlist = async (req, res) => {
     }
 
     // Calculate current price (considering discount)
-    const currentPrice = product.discount?.isActive
-      ? product.discount.discountedPrice
-      : product.price;
+    const currentPrice = product.price;
 
     // Add to wishlist
     wishlist.items.push({
@@ -393,9 +387,7 @@ const moveToCart = async (req, res) => {
       });
     }
 
-    const currentPrice = product.discount?.isActive
-      ? product.discount.discountedPrice
-      : product.price;
+    const currentPrice = product.price;
 
     if (existingCartItem) {
       existingCartItem.quantity = totalQuantity;
@@ -406,13 +398,6 @@ const moveToCart = async (req, res) => {
         price: product.price,
         quantity,
         image: product.images?.[0] || "",
-        discount: product.discount?.isActive
-          ? {
-              type: product.discount.type,
-              value: product.discount.value,
-              discountedPrice: product.discount.discountedPrice,
-            }
-          : undefined,
       });
     }
 

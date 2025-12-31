@@ -41,7 +41,7 @@ const getUserOrders = async (req, res) => {
       .sort(sortConfig)
       .limit(limit * 1)
       .skip((page - 1) * limit)
-      .populate("items.productId", "name images slug")
+      .populate("items.productId", "name images")
       .select("-__v");
 
     const totalOrders = await Order.countDocuments(filter);
@@ -103,7 +103,7 @@ const getOrderById = async (req, res) => {
       _id: orderId,
       userId: userId,
     })
-      .populate("items.productId", "name images slug specifications")
+      .populate("items.productId", "name images specifications")
       .populate("userId", "username email profile");
 
     if (!order) {
@@ -126,7 +126,7 @@ const getOrderById = async (req, res) => {
       _id: { $ne: order.items[0]?.productId?._id },
     })
       .limit(4)
-      .select("name price images slug");
+      .select("name price images");
 
     res.json({
       success: true,
@@ -232,7 +232,6 @@ const createOrder = async (req, res) => {
         quantity: cartItem.quantity,
         subtotal: itemTotal,
         image: product.images?.[0],
-        sku: product.sku,
         productType: product.productType || "single",
       };
 
@@ -268,7 +267,18 @@ const createOrder = async (req, res) => {
     }
 
     // Calculate totals
-    const shippingFee = calculateShippingFee(shippingMethod, subtotal);
+    let shippingFee = cart.summary.shippingFee || 0;
+
+    // Fallback if no shipping location details selected (can happen if UI doesn't force it)
+    if (!cart.selectedShippingFee && shippingMethod) {
+      shippingFee = calculateShippingFee(shippingMethod, subtotal);
+    }
+
+    // Check for free shipping coupon
+    if (cart.coupon && (cart.coupon.freeShipping || cart.coupon.discountType === "free_shipping")) {
+      shippingFee = 0;
+    }
+
     const taxAmount = calculateTax(subtotal, shippingAddress.state);
     const discount = cart.summary.totalDiscount || 0;
     const total = subtotal + shippingFee + taxAmount - discount;
@@ -294,8 +304,16 @@ const createOrder = async (req, res) => {
         ? shippingAddress
         : billingAddress,
       shippingMethod,
+      shippingLocation: cart.selectedShippingFee?.name,
       paymentMethod,
       notes,
+      coupon: cart.coupon ? {
+        code: cart.coupon.code,
+        couponId: cart.coupon.couponId,
+        discount: discount,
+        discountValue: cart.coupon.discountValue,
+        discountType: cart.coupon.discountType,
+      } : undefined,
       status: "pending",
       paymentStatus: "pending",
     });
@@ -942,7 +960,6 @@ const createGuestOrder = async (req, res) => {
         quantity: item.quantity,
         subtotal: itemTotal,
         image: product.images?.[0],
-        sku: product.sku,
         productType: product.productType || "single",
       };
 
@@ -1201,7 +1218,7 @@ const getOrderTimeline = async (req, res) => {
       timeline.push({
         status: "shipped",
         title: "Shipped",
-        description: order.trackingNumber 
+        description: order.trackingNumber
           ? `Package shipped with tracking number: ${order.trackingNumber}`
           : "Your package has been shipped",
         date: order.shippedAt || order.updatedAt,
@@ -1238,7 +1255,7 @@ const getOrderTimeline = async (req, res) => {
     // Add estimated steps for non-delivered orders
     if (!["delivered", "cancelled", "refunded"].includes(order.status)) {
       const estimatedDelivery = calculateEstimatedDelivery(order.createdAt, order.shippingMethod);
-      
+
       if (order.status !== "shipped") {
         timeline.push({
           status: "shipped",
@@ -1293,7 +1310,7 @@ const downloadInvoice = async (req, res) => {
     const order = await Order.findOne({
       _id: orderId,
       userId: userId,
-    }).populate("items.productId", "name sku");
+    }).populate("items.productId", "name");
 
     if (!order) {
       return res.status(404).json({
@@ -1312,7 +1329,6 @@ const downloadInvoice = async (req, res) => {
       billingAddress: order.billingAddress || order.shippingAddress,
       items: order.items.map(item => ({
         name: item.name,
-        sku: item.sku || item.productId?.sku,
         quantity: item.quantity,
         price: item.price,
         subtotal: item.subtotal,

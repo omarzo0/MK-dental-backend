@@ -86,117 +86,8 @@ const validatePaymentSettings = [
     .withMessage("Tax rate must be between 0 and 100"),
 ];
 
-const validateShippingSettings = [
-  body("defaultMethod")
-    .optional()
-    .trim()
-    .isLength({ max: 50 })
-    .withMessage("Default method cannot exceed 50 characters"),
 
-  body("freeShippingThreshold")
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage("Free shipping threshold must be a positive number"),
 
-  body("weightUnit")
-    .optional()
-    .isIn(["kg", "lb"])
-    .withMessage("Weight unit must be kg or lb"),
-
-  body("dimensionUnit")
-    .optional()
-    .isIn(["cm", "in"])
-    .withMessage("Dimension unit must be cm or in"),
-
-  body("enableShippingCalculator")
-    .optional()
-    .isBoolean()
-    .withMessage("Enable shipping calculator must be a boolean"),
-
-  body("handlingTime.min")
-    .optional()
-    .isInt({ min: 0 })
-    .withMessage("Minimum handling time must be a non-negative integer"),
-
-  body("handlingTime.max")
-    .optional()
-    .isInt({ min: 0 })
-    .withMessage("Maximum handling time must be a non-negative integer"),
-];
-
-const validateEmailSettings = [
-  body("provider")
-    .optional()
-    .isIn(["smtp", "sendgrid", "mailgun", "ses"])
-    .withMessage("Invalid email provider"),
-
-  body("fromName")
-    .optional()
-    .trim()
-    .isLength({ max: 100 })
-    .withMessage("From name cannot exceed 100 characters"),
-
-  body("fromEmail")
-    .optional()
-    .isEmail()
-    .withMessage("From email must be a valid email"),
-
-  body("replyTo")
-    .optional()
-    .isEmail()
-    .withMessage("Reply-to must be a valid email"),
-
-  body("smtp.host")
-    .optional()
-    .trim()
-    .isLength({ max: 200 })
-    .withMessage("SMTP host cannot exceed 200 characters"),
-
-  body("smtp.port")
-    .optional()
-    .isInt({ min: 1, max: 65535 })
-    .withMessage("SMTP port must be between 1 and 65535"),
-
-  body("smtp.secure")
-    .optional()
-    .isBoolean()
-    .withMessage("SMTP secure must be a boolean"),
-];
-
-const validateSeoSettings = [
-  body("metaTitle")
-    .optional()
-    .trim()
-    .isLength({ max: 70 })
-    .withMessage("Meta title cannot exceed 70 characters"),
-
-  body("metaDescription")
-    .optional()
-    .trim()
-    .isLength({ max: 160 })
-    .withMessage("Meta description cannot exceed 160 characters"),
-
-  body("metaKeywords")
-    .optional()
-    .isArray()
-    .withMessage("Meta keywords must be an array"),
-
-  body("canonicalUrl")
-    .optional()
-    .isURL()
-    .withMessage("Canonical URL must be a valid URL"),
-
-  body("sitemapEnabled")
-    .optional()
-    .isBoolean()
-    .withMessage("Sitemap enabled must be a boolean"),
-
-  body("googleAnalyticsId")
-    .optional()
-    .trim()
-    .isLength({ max: 50 })
-    .withMessage("Google Analytics ID cannot exceed 50 characters"),
-];
 
 const validateSocialSettings = [
   body("links.facebook")
@@ -272,42 +163,6 @@ const validateAppearanceSettings = [
     .withMessage("Products per page must be between 5 and 100"),
 ];
 
-const validateNotificationSettings = [
-  body("admin.newOrder")
-    .optional()
-    .isBoolean()
-    .withMessage("New order notification must be a boolean"),
-
-  body("admin.lowStock")
-    .optional()
-    .isBoolean()
-    .withMessage("Low stock notification must be a boolean"),
-
-  body("admin.newCustomer")
-    .optional()
-    .isBoolean()
-    .withMessage("New customer notification must be a boolean"),
-
-  body("admin.newReview")
-    .optional()
-    .isBoolean()
-    .withMessage("New review notification must be a boolean"),
-
-  body("customer.orderUpdates")
-    .optional()
-    .isBoolean()
-    .withMessage("Order updates notification must be a boolean"),
-
-  body("customer.promotions")
-    .optional()
-    .isBoolean()
-    .withMessage("Promotions notification must be a boolean"),
-
-  body("lowStockThreshold")
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage("Low stock threshold must be at least 1"),
-];
 
 const validateSecuritySettings = [
   body("passwordMinLength")
@@ -395,12 +250,8 @@ const validateAdminPermissions = [
 module.exports = {
   validateStoreSettings,
   validatePaymentSettings,
-  validateShippingSettings,
-  validateEmailSettings,
-  validateSeoSettings,
   validateSocialSettings,
   validateAppearanceSettings,
-  validateNotificationSettings,
   validateSecuritySettings,
   validateAdminId,
   validateAdminPermissions,

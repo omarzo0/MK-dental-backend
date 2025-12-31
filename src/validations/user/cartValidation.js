@@ -76,6 +76,14 @@ const validateCartNotes = [
     .withMessage("Cart notes cannot exceed 500 characters"),
 ];
 
+const validateUpdateShippingFee = [
+  body("shippingFeeId")
+    .notEmpty()
+    .withMessage("Shipping fee ID is required")
+    .isMongoId()
+    .withMessage("Valid shipping fee ID is required"),
+];
+
 module.exports = {
   validateAddToCart,
   validateUpdateCartItem,
@@ -83,4 +91,5 @@ module.exports = {
   validateApplyCoupon,
   validateShippingAddress,
   validateCartNotes,
+  validateUpdateShippingFee,
 };

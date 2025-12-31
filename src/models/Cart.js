@@ -24,6 +24,9 @@ const cartItemSchema = new mongoose.Schema({
   image: {
     type: String,
   },
+  category: {
+    type: String,
+  },
   // Product type: single or package
   productType: {
     type: String,
@@ -43,15 +46,6 @@ const cartItemSchema = new mongoose.Schema({
       price: { type: Number },
       image: { type: String },
     }],
-  },
-  discount: {
-    type: {
-      type: String,
-      enum: ["percentage", "fixed"],
-      default: "fixed",
-    },
-    value: { type: Number, default: 0 },
-    discountedPrice: { type: Number },
   },
   isAvailable: {
     type: Boolean,
@@ -99,23 +93,28 @@ const cartSchema = new mongoose.Schema({
     zipCode: { type: String },
     country: { type: String },
   },
-  selectedShipping: {
+  selectedShippingFee: {
     shippingFeeId: { type: mongoose.Schema.Types.ObjectId, ref: "ShippingFee" },
     name: { type: String },
-    fee: { type: Number, default: 0 },
-    estimatedDelivery: {
-      minDays: { type: Number },
-      maxDays: { type: Number },
-    },
+    amount: { type: Number, default: 0 },
+    freeShippingThreshold: { type: Number, default: null },
   },
   coupon: {
     code: { type: String },
+    couponId: { type: mongoose.Schema.Types.ObjectId, ref: "Coupon" },
     discountType: {
       type: String,
       enum: ["percentage", "fixed"],
     },
     discountValue: { type: Number },
+    calculatedDiscount: { type: Number, default: 0 },
+    maxDiscountAmount: { type: Number, default: null },
     minOrderValue: { type: Number },
+    freeShipping: { type: Boolean, default: false },
+    restrictions: {
+      categories: [{ type: String }],
+      products: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
+    },
   },
   notes: {
     type: String,
@@ -153,36 +152,69 @@ cartSchema.methods.calculateTotals = function () {
   this.items.forEach((item) => {
     const itemTotal = item.price * item.quantity;
     totalPrice += itemTotal;
-
-    if (item.discount && item.discount.discountedPrice) {
-      const originalTotal = item.price * item.quantity;
-      const discountedTotal = item.discount.discountedPrice * item.quantity;
-      totalDiscount += originalTotal - discountedTotal;
-    }
-
     itemsCount += item.quantity;
   });
 
-  // Apply coupon discount if exists
-  let couponDiscount = 0;
+  // Calculate coupon discount if exists
   if (this.coupon && this.coupon.code) {
-    if (this.coupon.discountType === "percentage") {
-      couponDiscount = (totalPrice * this.coupon.discountValue) / 100;
-    } else {
-      couponDiscount = this.coupon.discountValue;
+    // Determine which items the coupon applies to
+    let applicableItems = this.items;
+
+    if (this.coupon.restrictions) {
+      const { categories, products } = this.coupon.restrictions;
+
+      if (categories && categories.length > 0) {
+        applicableItems = applicableItems.filter(item => categories.includes(item.category));
+      }
+
+      if (products && products.length > 0) {
+        applicableItems = applicableItems.filter(item =>
+          products.some(pId => pId.toString() === item.productId._id?.toString() || pId.toString() === item.productId.toString())
+        );
+      }
     }
-    totalDiscount += couponDiscount;
+
+    const applicableTotal = applicableItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+    if (this.coupon.discountType === "percentage") {
+      totalDiscount = (applicableTotal * this.coupon.discountValue) / 100;
+
+      // Apply max discount cap
+      if (this.coupon.maxDiscountAmount && totalDiscount > this.coupon.maxDiscountAmount) {
+        totalDiscount = this.coupon.maxDiscountAmount;
+      }
+    } else {
+      totalDiscount = Math.min(this.coupon.discountValue, applicableTotal);
+    }
+
+    this.coupon.calculatedDiscount = totalDiscount;
   }
 
   const subtotal = totalPrice - totalDiscount;
-  const grandTotal =
-    subtotal + this.summary.shippingFee + this.summary.taxAmount;
+
+  // Calculate final shipping fee after location rules and coupon overrides
+  let finalShippingFee = 0;
+
+  if (this.selectedShippingFee && this.selectedShippingFee.shippingFeeId) {
+    finalShippingFee = this.selectedShippingFee.amount || 0;
+
+    // Check for location-specific free shipping threshold
+    if (this.selectedShippingFee.freeShippingThreshold !== null && totalPrice >= this.selectedShippingFee.freeShippingThreshold) {
+      finalShippingFee = 0;
+    }
+  }
+
+  if (this.coupon && (this.coupon.freeShipping || this.coupon.discountType === "free_shipping")) {
+    finalShippingFee = 0;
+  }
+
+  const grandTotal = subtotal + finalShippingFee + (this.summary.taxAmount || 0);
 
   this.summary = {
     itemsCount,
     totalPrice,
     totalDiscount,
-    shippingFee: this.summary.shippingFee || 0,
+    shippingFee: finalShippingFee, // Update summary to reflect actual fee to be paid
     taxAmount: this.summary.taxAmount || 0,
     grandTotal: Math.max(0, grandTotal),
   };
@@ -199,15 +231,15 @@ cartSchema.methods.addItem = function (product, quantity = 1) {
     // Update existing item - check against actual stock
     const currentQuantity = this.items[existingItemIndex].quantity;
     const newQuantity = currentQuantity + quantity;
-    
+
     if (newQuantity <= availableStock) {
       this.items[existingItemIndex].quantity = newQuantity;
       this.items[existingItemIndex].maxQuantity = availableStock;
       this.calculateTotals();
       return { success: true, quantity: newQuantity };
     } else {
-      return { 
-        success: false, 
+      return {
+        success: false,
         message: 'Insufficient stock',
         available: availableStock,
         inCart: currentQuantity,
@@ -224,7 +256,7 @@ cartSchema.methods.addItem = function (product, quantity = 1) {
         requested: quantity
       };
     }
-    
+
     // Build cart item object
     const cartItem = {
       productId: product._id,
@@ -232,7 +264,7 @@ cartSchema.methods.addItem = function (product, quantity = 1) {
       price: product.price,
       name: product.name,
       image: product.images?.[0],
-      sku: product.sku,
+      category: product.category,
       maxQuantity: availableStock,
       productType: product.productType || "single",
     };
@@ -253,9 +285,9 @@ cartSchema.methods.addItem = function (product, quantity = 1) {
         })),
       };
     }
-    
+
     this.items.push(cartItem);
-    
+
     this.calculateTotals();
     return { success: true, quantity: quantity };
   }
@@ -281,16 +313,16 @@ cartSchema.methods.updateQuantity = function (productId, quantity, availableStoc
 
   // Use provided stock or fall back to maxQuantity
   const maxAllowed = availableStock !== null ? availableStock : item.maxQuantity;
-  
+
   if (quantity > maxAllowed) {
-    return { 
-      success: false, 
+    return {
+      success: false,
       message: 'Insufficient stock',
       available: maxAllowed,
       requested: quantity
     };
   }
-  
+
   item.quantity = quantity;
   item.maxQuantity = maxAllowed; // Update maxQuantity with current stock
   this.calculateTotals();
@@ -338,7 +370,6 @@ cartSchema.statics.mergeCarts = async function (guestCartId, userId) {
         price: guestItem.price,
         name: guestItem.name,
         images: guestItem.image ? [guestItem.image] : [],
-        sku: guestItem.sku,
         inventory: { quantity: guestItem.maxQuantity },
       },
       guestItem.quantity

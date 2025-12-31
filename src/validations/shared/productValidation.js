@@ -17,23 +17,6 @@ const validateCreateProduct = [
     .withMessage("Description must be between 10 and 2000 characters")
     .trim(),
 
-  body("sku")
-    .notEmpty()
-    .withMessage("SKU is required")
-    .isLength({ min: 3, max: 50 })
-    .withMessage("SKU must be between 3 and 50 characters")
-    .matches(/^[A-Z0-9_-]+$/i)
-    .withMessage(
-      "SKU can only contain letters, numbers, hyphens and underscores"
-    )
-    .custom(async (sku) => {
-      const existingProduct = await Product.findOne({ sku });
-      if (existingProduct) {
-        throw new Error("SKU already exists");
-      }
-      return true;
-    }),
-
   body("category")
     .notEmpty()
     .withMessage("Category is required")
@@ -47,16 +30,6 @@ const validateCreateProduct = [
     .isFloat({ min: 0.01, max: 100000 })
     .withMessage("Price must be between 0.01 and 100,000"),
 
-  body("comparePrice")
-    .optional()
-    .isFloat({ min: 0.01, max: 100000 })
-    .withMessage("Compare price must be between 0.01 and 100,000")
-    .custom((comparePrice, { req }) => {
-      if (comparePrice && comparePrice <= req.body.price) {
-        throw new Error("Compare price must be greater than regular price");
-      }
-      return true;
-    }),
 
   body("cost")
     .optional()
@@ -73,12 +46,6 @@ const validateCreateProduct = [
     .optional()
     .isInt({ min: 0, max: 1000 })
     .withMessage("Low stock alert must be between 0 and 1000"),
-
-  body("specifications.brand")
-    .optional()
-    .isLength({ min: 2, max: 50 })
-    .withMessage("Brand must be between 2 and 50 characters")
-    .trim(),
 
   body("specifications.model")
     .optional()
@@ -124,42 +91,11 @@ const validateUpdateProduct = [
     .withMessage("Description must be between 10 and 2000 characters")
     .trim(),
 
-  body("sku")
-    .optional()
-    .isLength({ min: 3, max: 50 })
-    .withMessage("SKU must be between 3 and 50 characters")
-    .matches(/^[A-Z0-9_-]+$/i)
-    .withMessage(
-      "SKU can only contain letters, numbers, hyphens and underscores"
-    )
-    .custom(async (sku, { req }) => {
-      if (sku) {
-        const existingProduct = await Product.findOne({
-          sku,
-          _id: { $ne: req.params.productId },
-        });
-        if (existingProduct) {
-          throw new Error("SKU already exists");
-        }
-      }
-      return true;
-    }),
-
   body("price")
     .optional()
     .isFloat({ min: 0.01, max: 100000 })
     .withMessage("Price must be between 0.01 and 100,000"),
 
-  body("comparePrice")
-    .optional()
-    .isFloat({ min: 0.01, max: 100000 })
-    .withMessage("Compare price must be between 0.01 and 100,000")
-    .custom((comparePrice, { req }) => {
-      if (comparePrice && req.body.price && comparePrice <= req.body.price) {
-        throw new Error("Compare price must be greater than regular price");
-      }
-      return true;
-    }),
 
   body("inventory.quantity")
     .optional()

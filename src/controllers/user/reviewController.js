@@ -283,7 +283,7 @@ const getUserReviews = async (req, res) => {
     }
 
     const reviews = await Review.find(filter)
-      .populate("productId", "name images price slug")
+      .populate("productId", "name images price")
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);

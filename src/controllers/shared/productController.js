@@ -54,7 +54,6 @@ const getAllProducts = async (req, res) => {
       filter.$or = [
         { name: { $regex: search, $options: "i" } },
         { description: { $regex: search, $options: "i" } },
-        { "specifications.brand": { $regex: search, $options: "i" } },
         { tags: { $in: [new RegExp(search, "i")] } },
       ];
     }
@@ -589,7 +588,6 @@ const searchProducts = async (req, res) => {
           $or: [
             { name: { $regex: q, $options: "i" } },
             { description: { $regex: q, $options: "i" } },
-            { "specifications.brand": { $regex: q, $options: "i" } },
             { tags: { $in: [new RegExp(q, "i")] } },
           ],
         },
@@ -638,24 +636,11 @@ const getSearchSuggestions = async (req, res) => {
       .limit(parseInt(limit))
       .select("name images price category");
 
-    // Get category suggestions
-    const categories = await Product.distinct("category", {
-      status: "active",
-      category: { $regex: q, $options: "i" },
-    });
-
-    // Get brand suggestions
-    const brands = await Product.distinct("specifications.brand", {
-      status: "active",
-      "specifications.brand": { $regex: q, $options: "i" },
-    });
-
     res.json({
       success: true,
       data: {
         products,
         categories: categories.slice(0, 5),
-        brands: brands.slice(0, 5),
         searchQuery: q,
       },
     });
@@ -733,18 +718,11 @@ const getFiltersData = async (req, res) => {
     }
 
     // Get all filter options in parallel
-    const [categories, brands, priceRange, attributes] = await Promise.all([
+    const [categories, priceRange, attributes] = await Promise.all([
       // Categories with count
       Product.aggregate([
         { $match: { status: "active" } },
         { $group: { _id: "$category", count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-      ]),
-      // Brands with count
-      Product.aggregate([
-        { $match: baseFilter },
-        { $group: { _id: "$specifications.brand", count: { $sum: 1 } } },
-        { $match: { _id: { $ne: null } } },
         { $sort: { count: -1 } },
       ]),
       // Price range
@@ -753,20 +731,20 @@ const getFiltersData = async (req, res) => {
         {
           $group: {
             _id: null,
-            minPrice: { $min: "$price" },
-            maxPrice: { $max: "$price" },
-            avgPrice: { $avg: "$price" },
+            min: { $min: "$price" },
+            max: { $max: "$price" },
           },
         },
       ]),
-      // Product attributes (colors, sizes, etc.)
+      // Other attributes (storage, color etc)
+      // This is a more complex aggregation to get all unique values for these fields
       Product.aggregate([
         { $match: baseFilter },
-        { $unwind: { path: "$attributes", preserveNullAndEmptyArrays: false } },
         {
           $group: {
-            _id: "$attributes.name",
-            values: { $addToSet: "$attributes.value" },
+            _id: null,
+            colors: { $addToSet: "$specifications.color" },
+            storage: { $addToSet: "$specifications.storage" },
           },
         },
       ]),
@@ -776,9 +754,8 @@ const getFiltersData = async (req, res) => {
       success: true,
       data: {
         categories: categories.map(c => ({ name: c._id, count: c.count })),
-        brands: brands.map(b => ({ name: b._id, count: b.count })),
-        priceRange: priceRange[0] || { minPrice: 0, maxPrice: 1000, avgPrice: 500 },
-        attributes,
+        priceRange: priceRange[0] || { min: 0, max: 0 },
+        attributes: attributes[0] || { colors: [], storage: [] },
         stockOptions: [
           { value: "in_stock", label: "In Stock" },
           { value: "out_of_stock", label: "Out of Stock" },
@@ -982,15 +959,6 @@ const estimateShipping = async (req, res) => {
   }
 };
 
-// Helper function to generate slug
-const generateSlug = (name) => {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/[\s_-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-};
 
 module.exports = {
   getAllProducts,

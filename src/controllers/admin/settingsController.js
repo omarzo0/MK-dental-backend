@@ -34,12 +34,8 @@ const getSettingsByKey = async (req, res) => {
     const validKeys = [
       "store",
       "payment",
-      "shipping",
-      "email",
-      "seo",
       "social",
       "appearance",
-      "notification",
       "security",
     ];
 
@@ -134,101 +130,6 @@ const updatePaymentSettings = async (req, res) => {
   }
 };
 
-// @desc    Update shipping settings
-// @route   PUT /api/admin/settings/shipping
-// @access  Private (Admin)
-const updateShippingSettings = async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: errors.array(),
-      });
-    }
-
-    const updateData = req.body;
-    const settings = await Settings.updateByKey("shipping", updateData, req.admin.adminId);
-
-    res.json({
-      success: true,
-      message: "Shipping settings updated successfully",
-      data: { settings: settings.shipping },
-    });
-  } catch (error) {
-    console.error("Update shipping settings error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error while updating shipping settings",
-      error: error.message,
-    });
-  }
-};
-
-// @desc    Update email settings
-// @route   PUT /api/admin/settings/email
-// @access  Private (Admin)
-const updateEmailSettings = async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: errors.array(),
-      });
-    }
-
-    const updateData = req.body;
-    const settings = await Settings.updateByKey("email", updateData, req.admin.adminId);
-
-    res.json({
-      success: true,
-      message: "Email settings updated successfully",
-      data: { settings: settings.email },
-    });
-  } catch (error) {
-    console.error("Update email settings error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error while updating email settings",
-      error: error.message,
-    });
-  }
-};
-
-// @desc    Update SEO settings
-// @route   PUT /api/admin/settings/seo
-// @access  Private (Admin)
-const updateSeoSettings = async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: errors.array(),
-      });
-    }
-
-    const updateData = req.body;
-    const settings = await Settings.updateByKey("seo", updateData, req.admin.adminId);
-
-    res.json({
-      success: true,
-      message: "SEO settings updated successfully",
-      data: { settings: settings.seo },
-    });
-  } catch (error) {
-    console.error("Update SEO settings error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error while updating SEO settings",
-      error: error.message,
-    });
-  }
-};
 
 // @desc    Update social settings
 // @route   PUT /api/admin/settings/social
@@ -294,37 +195,6 @@ const updateAppearanceSettings = async (req, res) => {
   }
 };
 
-// @desc    Update notification settings
-// @route   PUT /api/admin/settings/notification
-// @access  Private (Admin)
-const updateNotificationSettings = async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: errors.array(),
-      });
-    }
-
-    const updateData = req.body;
-    const settings = await Settings.updateByKey("notification", updateData, req.admin.adminId);
-
-    res.json({
-      success: true,
-      message: "Notification settings updated successfully",
-      data: { settings: settings.notification },
-    });
-  } catch (error) {
-    console.error("Update notification settings error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error while updating notification settings",
-      error: error.message,
-    });
-  }
-};
 
 // @desc    Update security settings
 // @route   PUT /api/admin/settings/security
@@ -632,12 +502,8 @@ module.exports = {
   getSettingsByKey,
   updateStoreSettings,
   updatePaymentSettings,
-  updateShippingSettings,
-  updateEmailSettings,
-  updateSeoSettings,
   updateSocialSettings,
   updateAppearanceSettings,
-  updateNotificationSettings,
   updateSecuritySettings,
   getAllAdmins,
   getAdminById,

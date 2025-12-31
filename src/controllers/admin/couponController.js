@@ -80,7 +80,7 @@ const getAllCoupons = async (req, res) => {
     // Get coupons with pagination
     const coupons = await Coupon.find(filter)
       .populate("createdBy", "username profile.firstName profile.lastName")
-      .populate("restrictions.products", "name sku price")
+      .populate("restrictions.products", "name price")
       .sort(sortConfig)
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -155,7 +155,7 @@ const getCouponById = async (req, res) => {
     const coupon = await Coupon.findById(couponId)
       .populate("createdBy", "username profile.firstName profile.lastName")
       .populate("updatedBy", "username profile.firstName profile.lastName")
-      .populate("restrictions.products", "name sku price images")
+      .populate("restrictions.products", "name price images")
       .populate("usedBy.userId", "username email profile.firstName profile.lastName");
 
     if (!coupon) {

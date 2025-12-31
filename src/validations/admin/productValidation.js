@@ -74,11 +74,6 @@ const validateCreateProduct = [
     .isFloat({ min: 0 })
     .withMessage("Price must be a positive number"),
 
-  body("comparePrice")
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage("Compare price must be a positive number"),
-
   body("cost")
     .optional()
     .isFloat({ min: 0 })
@@ -153,36 +148,6 @@ const validateCreateProduct = [
     .optional()
     .isLength({ max: 160 })
     .withMessage("Meta description cannot exceed 160 characters"),
-
-  body("discount.type")
-    .optional()
-    .isIn(["percentage", "fixed"])
-    .withMessage("Discount type must be 'percentage' or 'fixed'"),
-
-  body("discount.value")
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage("Discount value must be a positive number"),
-
-  body("discount.discountedPrice")
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage("Discounted price must be a positive number"),
-
-  body("discount.startDate")
-    .optional()
-    .isISO8601()
-    .withMessage("Start date must be a valid ISO date"),
-
-  body("discount.endDate")
-    .optional()
-    .isISO8601()
-    .withMessage("End date must be a valid ISO date"),
-
-  body("discount.isActive")
-    .optional()
-    .isBoolean()
-    .withMessage("Discount isActive must be a boolean"),
 ];
 
 const validateUpdateProduct = [
@@ -205,11 +170,6 @@ const validateUpdateProduct = [
     .optional()
     .isFloat({ min: 0 })
     .withMessage("Price must be a positive number"),
-
-  body("comparePrice")
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage("Compare price must be a positive number"),
 
   body("cost")
     .optional()
@@ -240,36 +200,6 @@ const validateUpdateProduct = [
     .optional()
     .isBoolean()
     .withMessage("Featured must be a boolean"),
-
-  body("discount.type")
-    .optional()
-    .isIn(["percentage", "fixed"])
-    .withMessage("Discount type must be 'percentage' or 'fixed'"),
-
-  body("discount.value")
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage("Discount value must be a positive number"),
-
-  body("discount.discountedPrice")
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage("Discounted price must be a positive number"),
-
-  body("discount.startDate")
-    .optional()
-    .isISO8601()
-    .withMessage("Start date must be a valid ISO date"),
-
-  body("discount.endDate")
-    .optional()
-    .isISO8601()
-    .withMessage("End date must be a valid ISO date"),
-
-  body("discount.isActive")
-    .optional()
-    .isBoolean()
-    .withMessage("Discount isActive must be a boolean"),
 ];
 
 const validateDeleteProduct = [

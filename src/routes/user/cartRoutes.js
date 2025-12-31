@@ -9,6 +9,7 @@ const {
   validateApplyCoupon,
   validateShippingAddress,
   validateCartNotes,
+  validateUpdateShippingFee,
 } = require("../../validations/user/cartValidation");
 
 const {
@@ -21,6 +22,7 @@ const {
   removeCoupon,
   updateShippingAddress,
   updateCartNotes,
+  updateSelectedShippingFee,
 } = require("../../controllers/user/cartController");
 
 // All routes require user authentication
@@ -39,6 +41,7 @@ router.delete("/coupon", removeCoupon);
 
 // Shipping and notes routes
 router.put("/shipping", validateShippingAddress, updateShippingAddress);
+router.patch("/shipping-fee", validateUpdateShippingFee, updateSelectedShippingFee);
 router.put("/notes", validateCartNotes, updateCartNotes);
 
 module.exports = router;

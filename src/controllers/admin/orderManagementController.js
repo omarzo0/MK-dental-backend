@@ -126,7 +126,7 @@ const getOrderById = async (req, res) => {
         "username email profile.firstName profile.lastName profile.phone"
       )
       .populate("handledBy", "username profile.firstName profile.lastName")
-      .populate("items.productId", "name images sku inventory");
+      .populate("items.productId", "name images inventory");
 
     if (!order) {
       return res.status(404).json({
@@ -1086,7 +1086,7 @@ async function generateInvoice(req, res) {
 
     const order = await Order.findById(id)
       .populate("userId", "email profile.firstName profile.lastName profile.phone")
-      .populate("items.productId", "name sku");
+      .populate("items.productId", "name");
 
     if (!order) {
       return res.status(404).json({
@@ -1101,40 +1101,39 @@ async function generateInvoice(req, res) {
       invoiceDate: new Date(),
       orderNumber: order.orderNumber,
       orderDate: order.createdAt,
-      
+
       // Customer details
       customer: {
         name: `${order.customer.firstName} ${order.customer.lastName}`,
         email: order.customer.email,
         phone: order.customer.phone || "",
       },
-      
+
       // Billing address
       billingAddress: order.shippingAddress,
-      
+
       // Shipping address
       shippingAddress: order.shippingAddress,
-      
+
       // Items
       items: order.items.map((item) => ({
         name: item.name,
-        sku: item.productId?.sku || "N/A",
         quantity: item.quantity,
         unitPrice: item.price,
         subtotal: item.subtotal,
       })),
-      
+
       // Totals
       subtotal: order.totals.subtotal,
       discount: order.totals.discount || 0,
       tax: order.totals.tax || 0,
       shipping: order.totals.shipping || 0,
       total: order.totals.total,
-      
+
       // Payment info
       paymentStatus: order.paymentStatus,
       paymentMethod: order.paymentMethod || "N/A",
-      
+
       // Company info (should come from settings)
       company: {
         name: "MK Dental",
@@ -1143,7 +1142,7 @@ async function generateInvoice(req, res) {
         email: "",
         website: "",
       },
-      
+
       // Notes
       notes: order.notes?.filter((n) => !n.isPrivate).map((n) => n.content) || [],
     };
@@ -1224,7 +1223,6 @@ function generateHtmlInvoice(data) {
         <thead>
           <tr>
             <th>Item</th>
-            <th>SKU</th>
             <th>Qty</th>
             <th>Price</th>
             <th>Total</th>
@@ -1234,7 +1232,6 @@ function generateHtmlInvoice(data) {
           ${data.items.map((item) => `
             <tr>
               <td>${item.name}</td>
-              <td>${item.sku}</td>
               <td>${item.quantity}</td>
               <td>$${item.unitPrice.toFixed(2)}</td>
               <td>$${item.subtotal.toFixed(2)}</td>

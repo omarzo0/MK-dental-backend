@@ -5,12 +5,8 @@ const { adminAuth, checkPermission, isSuperAdmin } = require("../../middleware/a
 const {
   validateStoreSettings,
   validatePaymentSettings,
-  validateShippingSettings,
-  validateEmailSettings,
-  validateSeoSettings,
   validateSocialSettings,
   validateAppearanceSettings,
-  validateNotificationSettings,
   validateSecuritySettings,
   validateAdminId,
   validateAdminPermissions,
@@ -20,12 +16,8 @@ const {
   getSettingsByKey,
   updateStoreSettings,
   updatePaymentSettings,
-  updateShippingSettings,
-  updateEmailSettings,
-  updateSeoSettings,
   updateSocialSettings,
   updateAppearanceSettings,
-  updateNotificationSettings,
   updateSecuritySettings,
   getAllAdmins,
   getAdminById,
@@ -44,12 +36,8 @@ router.get("/:key", getSettingsByKey);
 // Update specific settings
 router.put("/store", validateStoreSettings, updateStoreSettings);
 router.put("/payment", validatePaymentSettings, updatePaymentSettings);
-router.put("/shipping", validateShippingSettings, updateShippingSettings);
-router.put("/email", validateEmailSettings, updateEmailSettings);
-router.put("/seo", validateSeoSettings, updateSeoSettings);
 router.put("/social", validateSocialSettings, updateSocialSettings);
 router.put("/appearance", validateAppearanceSettings, updateAppearanceSettings);
-router.put("/notification", validateNotificationSettings, updateNotificationSettings);
 router.put("/security", isSuperAdmin, validateSecuritySettings, updateSecuritySettings);
 
 // Admin users management (Super Admin only)

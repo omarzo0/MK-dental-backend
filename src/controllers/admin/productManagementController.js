@@ -44,8 +44,6 @@ const getAllProducts = async (req, res) => {
       filter.$or = [
         { name: { $regex: search, $options: "i" } },
         { description: { $regex: search, $options: "i" } },
-        { sku: { $regex: search, $options: "i" } },
-        { "specifications.brand": { $regex: search, $options: "i" } },
         { tags: { $in: [new RegExp(search, "i")] } },
       ];
     }
@@ -402,11 +400,8 @@ const createProduct = async (req, res) => {
     const {
       name,
       description,
-      sku,
       category,
-      subcategory,
       price,
-      comparePrice,
       cost,
       inventory,
       images,
@@ -420,14 +415,6 @@ const createProduct = async (req, res) => {
       packageItems,
     } = req.body;
 
-    // Check if SKU already exists
-    const existingProduct = await Product.findOne({ sku });
-    if (existingProduct) {
-      return res.status(400).json({
-        success: false,
-        message: "Product with this SKU already exists",
-      });
-    }
 
     // Validate package items if product type is package
     if (productType === "package") {
@@ -460,11 +447,8 @@ const createProduct = async (req, res) => {
     const product = new Product({
       name,
       description,
-      sku,
       category,
-      subcategory,
       price,
-      comparePrice,
       cost,
       productType,
       packageItems: productType === "package" ? packageItems : [],
@@ -480,16 +464,7 @@ const createProduct = async (req, res) => {
         metaDescription: seo?.metaDescription || description.substring(0, 160),
       },
       tags: tags || [],
-      status,
       featured,
-      discount: discount ? {
-        type: discount.type || "fixed",
-        value: discount.value || 0,
-        discountedPrice: discount.discountedPrice,
-        startDate: discount.startDate,
-        endDate: discount.endDate,
-        isActive: discount.isActive || false,
-      } : undefined,
       createdBy: req.admin.adminId,
     });
 
@@ -549,27 +524,6 @@ const updateProduct = async (req, res) => {
       });
     }
 
-    // Handle SKU uniqueness check if SKU is being updated
-    if (updateData.sku && updateData.sku !== product.sku) {
-      const existingProduct = await Product.findOne({ sku: updateData.sku, _id: { $ne: productId } });
-      if (existingProduct) {
-        return res.status(400).json({
-          success: false,
-          message: "Product with this SKU already exists",
-        });
-      }
-    }
-
-    // Handle discount field - remove it if type is invalid or "none"
-    if (updateData.discount !== undefined) {
-      if (updateData.discount === null ||
-        (typeof updateData.discount === "object" &&
-          (!updateData.discount.type || !["percentage", "fixed"].includes(updateData.discount.type)))) {
-        // Remove discount from both updateData and the product object
-        delete updateData.discount;
-        product.discount = undefined;
-      }
-    }
 
     // Update product fields
     Object.keys(updateData).forEach((key) => {
@@ -586,8 +540,6 @@ const updateProduct = async (req, res) => {
           };
         } else if (key === "seo" && typeof updateData[key] === "object") {
           product.seo = { ...product.seo, ...updateData[key] };
-        } else if (key === "discount" && typeof updateData[key] === "object") {
-          product.discount = { ...product.discount, ...updateData[key] };
         } else {
           product[key] = updateData[key];
         }
@@ -779,19 +731,17 @@ const bulkProductOperations = async (req, res) => {
           });
         }
 
-        const updateField =
-          data.field === "comparePrice" ? "comparePrice" : "price";
         result = await Product.updateMany(
           { _id: { $in: productIds } },
           {
             $set: {
-              [updateField]: parseFloat(data.price),
+              price: parseFloat(data.price),
               updatedAt: new Date(),
               updatedBy: req.admin.adminId,
             },
           }
         );
-        message = `${result.modifiedCount} products ${updateField} updated successfully`;
+        message = `${result.modifiedCount} products price updated successfully`;
         break;
 
       case "export":
@@ -936,7 +886,6 @@ const updateProductInventory = async (req, res) => {
         product: {
           _id: product._id,
           name: product.name,
-          sku: product.sku,
           inventory: {
             previousQuantity: oldQuantity,
             newQuantity: product.inventory.quantity,
@@ -969,7 +918,7 @@ const getLowStockAlerts = async (req, res) => {
       "inventory.trackQuantity": true,
     })
       .select(
-        "name sku price inventory.quantity inventory.lowStockAlert images category"
+        "name price inventory.quantity inventory.lowStockAlert images category"
       )
       .sort({ "inventory.quantity": 1 })
       .limit(limit * 1)
@@ -1043,7 +992,7 @@ const getProductRecommendations = async (productId, category) => {
     _id: { $ne: productId },
   })
     .limit(4)
-    .select("name price images slug category")
+    .select("name price images category")
     .sort({ createdAt: -1 });
 };
 

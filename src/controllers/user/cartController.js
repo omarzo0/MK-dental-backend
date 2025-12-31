@@ -1,5 +1,6 @@
 const Cart = require("../../models/Cart");
 const Product = require("../../models/Product");
+const ShippingFee = require("../../models/ShippingFee");
 const { validationResult } = require("express-validator");
 
 // @desc    Get user's cart
@@ -9,7 +10,7 @@ const getCart = async (req, res) => {
   try {
     const cart = await Cart.findOne({ userId: req.user.userId }).populate(
       "items.productId",
-      "name price images inventory slug productType packageDetails packageItems"
+      "name price images inventory productType packageDetails packageItems category"
     );
 
     if (!cart) {
@@ -88,7 +89,7 @@ const addToCart = async (req, res) => {
         path: "packageItems.productId",
         select: "name price images inventory status",
       });
-      
+
       // Check if all package items are available
       for (const pkgItem of product.packageItems) {
         if (!pkgItem.productId || pkgItem.productId.status !== "active") {
@@ -146,7 +147,7 @@ const addToCart = async (req, res) => {
     await cart.save();
 
     // Populate the cart items
-    await cart.populate("items.productId", "name price images inventory slug");
+    await cart.populate("items.productId", "name price images inventory");
 
     res.status(201).json({
       success: true,
@@ -230,7 +231,7 @@ const updateCartItem = async (req, res) => {
     }
 
     await cart.save();
-    await cart.populate("items.productId", "name price images inventory slug");
+    await cart.populate("items.productId", "name price images inventory");
 
     res.json({
       success: true,
@@ -285,7 +286,7 @@ const removeFromCart = async (req, res) => {
     // Remove item
     cart.removeItem(cartItem.productId);
     await cart.save();
-    await cart.populate("items.productId", "name price images inventory slug");
+    await cart.populate("items.productId", "name price images inventory");
 
     res.json({
       success: true,
@@ -397,11 +398,13 @@ const applyCoupon = async (req, res) => {
       calculatedDiscount: coupon.calculatedDiscount,
       freeShipping: coupon.freeShipping || false,
       minOrderValue: coupon.minOrderValue,
+      maxDiscountAmount: coupon.maxDiscountAmount,
+      restrictions: coupon.restrictions,
     };
 
     await cart.calculateTotals();
     await cart.save();
-    await cart.populate("items.productId", "name price images inventory slug");
+    await cart.populate("items.productId", "name price images inventory");
 
     res.json({
       success: true,
@@ -451,7 +454,7 @@ const removeCoupon = async (req, res) => {
     cart.coupon = undefined;
     await cart.calculateTotals();
     await cart.save();
-    await cart.populate("items.productId", "name price images inventory slug");
+    await cart.populate("items.productId", "name price images inventory");
 
     res.json({
       success: true,
@@ -503,11 +506,9 @@ const updateShippingAddress = async (req, res) => {
       country: country || "USA",
     };
 
-    // Recalculate shipping fee based on address (simplified)
-    cart.summary.shippingFee = calculateShippingFee(cart, state);
     await cart.calculateTotals();
     await cart.save();
-    await cart.populate("items.productId", "name price images inventory slug");
+    await cart.populate("items.productId", "name price images inventory");
 
     res.json({
       success: true,
@@ -521,6 +522,61 @@ const updateShippingAddress = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error while updating shipping address",
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Update selected shipping fee
+// @route   PATCH /api/cart/shipping-fee
+// @access  Private
+const updateSelectedShippingFee = async (req, res) => {
+  try {
+    const { shippingFeeId } = req.body;
+
+    const cart = await Cart.findOne({ userId: req.user.userId });
+    if (!cart) {
+      return res.status(404).json({
+        success: false,
+        message: "Cart not found",
+      });
+    }
+
+    const shippingFee = await ShippingFee.findOne({ _id: shippingFeeId, isActive: true });
+    if (!shippingFee) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipping fee location not found or inactive",
+      });
+    }
+
+    // Update cart with shipping fee details
+    cart.selectedShippingFee = {
+      shippingFeeId: shippingFee._id,
+      name: shippingFee.name,
+      amount: shippingFee.shippingFee,
+      freeShippingThreshold: shippingFee.freeShippingThreshold
+    };
+
+    await cart.calculateTotals();
+    await cart.save();
+
+    await cart.populate([
+      { path: "items.productId", select: "name price images inventory" }
+    ]);
+
+    res.json({
+      success: true,
+      message: `Shipping set to ${shippingFee.name}`,
+      data: {
+        cart,
+      },
+    });
+  } catch (error) {
+    console.error("Update shipping fee error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while updating shipping fee",
       error: error.message,
     });
   }
@@ -552,7 +608,7 @@ const updateCartNotes = async (req, res) => {
 
     cart.notes = notes;
     await cart.save();
-    await cart.populate("items.productId", "name price images inventory slug");
+    await cart.populate("items.productId", "name price images inventory");
 
     res.json({
       success: true,
@@ -575,23 +631,23 @@ const updateCartNotes = async (req, res) => {
 const validateCoupon = async (couponCode, cartTotal, userId, cartItems = []) => {
   try {
     const Coupon = require("../../models/Coupon");
-    
+
     // Find valid coupon by code
     const coupon = await Coupon.findValidByCode(couponCode);
-    
+
     if (!coupon) {
       return { valid: false, message: "Invalid or expired coupon code" };
     }
-    
+
     // Check if coupon can be used by this user
     const canUse = await coupon.canBeUsedBy(userId, cartTotal, cartItems);
     if (!canUse.valid) {
       return { valid: false, message: canUse.message };
     }
-    
+
     // Calculate discount
     const discountInfo = coupon.calculateDiscount(cartTotal, cartItems);
-    
+
     return {
       valid: true,
       message: "Coupon applied successfully",
@@ -602,27 +658,15 @@ const validateCoupon = async (couponCode, cartTotal, userId, cartItems = []) => 
       freeShipping: discountInfo.freeShipping,
       minOrderValue: coupon.minimumPurchase,
       maxDiscountAmount: coupon.maxDiscountAmount,
+      restrictions: {
+        categories: coupon.restrictions?.categories || [],
+        products: coupon.restrictions?.products || [],
+      },
     };
   } catch (error) {
     console.error("Coupon validation error:", error);
     return { valid: false, message: "Error validating coupon" };
   }
-};
-
-// Helper function to calculate shipping fee (simplified)
-const calculateShippingFee = (cart, state) => {
-  const freeShippingStates = ["CA", "NY", "TX", "FL"];
-  const baseShipping = 9.99;
-  const freeShippingThreshold = 75;
-
-  if (
-    cart.summary.totalPrice >= freeShippingThreshold &&
-    freeShippingStates.includes(state)
-  ) {
-    return 0;
-  }
-
-  return baseShipping;
 };
 
 // Helper function to update cart items availability
@@ -634,7 +678,7 @@ const updateCartItemsAvailability = async (cart) => {
       item.maxQuantity = 0;
     } else {
       item.isAvailable = product.inventory.quantity > 0;
-      item.maxQuantity = Math.min(product.inventory.quantity, 10);
+      item.maxQuantity = Math.min(product.inventory.quantity, 100); // Increased default max
 
       // Adjust quantity if it exceeds available stock
       if (item.quantity > item.maxQuantity) {
@@ -654,4 +698,5 @@ module.exports = {
   removeCoupon,
   updateShippingAddress,
   updateCartNotes,
+  updateSelectedShippingFee,
 };

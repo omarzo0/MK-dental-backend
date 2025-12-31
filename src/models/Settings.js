@@ -10,12 +10,8 @@ const settingsSchema = new mongoose.Schema(
       enum: [
         "store",
         "payment",
-        "shipping",
-        "email",
-        "seo",
         "social",
         "appearance",
-        "notification",
         "security",
       ],
     },
@@ -121,81 +117,6 @@ const settingsSchema = new mongoose.Schema(
       },
     },
 
-    // Shipping Settings
-    shipping: {
-      defaultMethod: String,
-      freeShippingThreshold: Number,
-      weightUnit: { type: String, enum: ["kg", "lb"], default: "kg" },
-      dimensionUnit: { type: String, enum: ["cm", "in"], default: "cm" },
-      enableShippingCalculator: { type: Boolean, default: true },
-      originAddress: {
-        street: String,
-        city: String,
-        state: String,
-        postalCode: String,
-        country: String,
-      },
-      handlingTime: {
-        min: { type: Number, default: 1 },
-        max: { type: Number, default: 3 },
-        unit: { type: String, enum: ["days", "hours"], default: "days" },
-      },
-      trackingUrlTemplate: String,
-    },
-
-    // Email Settings
-    email: {
-      provider: {
-        type: String,
-        enum: ["smtp", "sendgrid", "mailgun", "ses"],
-        default: "smtp",
-      },
-      fromName: String,
-      fromEmail: String,
-      replyTo: String,
-      smtp: {
-        host: String,
-        port: Number,
-        secure: Boolean,
-        username: String,
-        password: String,
-      },
-      templates: {
-        orderConfirmation: { enabled: Boolean, subject: String, templateId: String },
-        orderShipped: { enabled: Boolean, subject: String, templateId: String },
-        orderDelivered: { enabled: Boolean, subject: String, templateId: String },
-        orderCancelled: { enabled: Boolean, subject: String, templateId: String },
-        paymentReceived: { enabled: Boolean, subject: String, templateId: String },
-        passwordReset: { enabled: Boolean, subject: String, templateId: String },
-        welcome: { enabled: Boolean, subject: String, templateId: String },
-        newsletter: { enabled: Boolean, subject: String, templateId: String },
-      },
-    },
-
-    // SEO Settings
-    seo: {
-      metaTitle: String,
-      metaDescription: String,
-      metaKeywords: [String],
-      ogImage: {
-        url: String,
-        publicId: String,
-      },
-      canonicalUrl: String,
-      robotsTxt: String,
-      sitemapEnabled: { type: Boolean, default: true },
-      googleAnalyticsId: String,
-      googleTagManagerId: String,
-      facebookPixelId: String,
-      structuredData: {
-        enabled: { type: Boolean, default: true },
-        organization: {
-          name: String,
-          logo: String,
-          sameAs: [String], // Social media URLs
-        },
-      },
-    },
 
     // Social Media Settings
     social: {
@@ -226,7 +147,6 @@ const settingsSchema = new mongoose.Schema(
         featuredProductsCount: { type: Number, default: 8 },
         newArrivalsCount: { type: Number, default: 8 },
         showCategories: { type: Boolean, default: true },
-        showBrands: { type: Boolean, default: true },
       },
       productPage: {
         showRelatedProducts: { type: Boolean, default: true },
@@ -242,22 +162,6 @@ const settingsSchema = new mongoose.Schema(
       },
     },
 
-    // Notification Settings
-    notification: {
-      admin: {
-        newOrder: { type: Boolean, default: true },
-        lowStock: { type: Boolean, default: true },
-        newCustomer: { type: Boolean, default: true },
-        newReview: { type: Boolean, default: true },
-        paymentFailed: { type: Boolean, default: true },
-      },
-      customer: {
-        orderUpdates: { type: Boolean, default: true },
-        promotions: { type: Boolean, default: false },
-        newsletter: { type: Boolean, default: false },
-      },
-      lowStockThreshold: { type: Number, default: 10 },
-    },
 
     // Security Settings
     security: {
@@ -292,12 +196,12 @@ settingsSchema.index({ key: 1 }, { unique: true });
 // Static method to get settings by key
 settingsSchema.statics.getByKey = async function (key) {
   let settings = await this.findOne({ key });
-  
+
   if (!settings) {
     // Create default settings if not exists
     settings = await this.create({ key });
   }
-  
+
   return settings;
 };
 
@@ -308,7 +212,7 @@ settingsSchema.statics.updateByKey = async function (key, data, adminId) {
     { $set: { [key]: data, updatedBy: adminId } },
     { new: true, upsert: true, runValidators: true }
   );
-  
+
   return settings;
 };
 
@@ -317,22 +221,18 @@ settingsSchema.statics.getAllSettings = async function () {
   const settingsKeys = [
     "store",
     "payment",
-    "shipping",
-    "email",
-    "seo",
     "social",
     "appearance",
-    "notification",
     "security",
   ];
-  
+
   const allSettings = {};
-  
+
   for (const key of settingsKeys) {
     const settings = await this.getByKey(key);
     allSettings[key] = settings[key] || {};
   }
-  
+
   return allSettings;
 };
 
@@ -340,7 +240,7 @@ settingsSchema.statics.getAllSettings = async function () {
 settingsSchema.methods.getValue = function (path) {
   const keys = path.split(".");
   let value = this[this.key];
-  
+
   for (const key of keys) {
     if (value && typeof value === "object") {
       value = value[key];
@@ -348,7 +248,7 @@ settingsSchema.methods.getValue = function (path) {
       return undefined;
     }
   }
-  
+
   return value;
 };
 

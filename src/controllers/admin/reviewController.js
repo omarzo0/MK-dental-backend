@@ -57,7 +57,7 @@ const getAllReviews = async (req, res) => {
 
     const reviews = await Review.find(filter)
       .populate("userId", "username email profile.firstName profile.lastName")
-      .populate("productId", "name images slug")
+      .populate("productId", "name images")
       .populate("moderatedBy", "username")
       .sort(sortConfig)
       .limit(limit * 1)
@@ -124,7 +124,7 @@ const getReviewById = async (req, res) => {
 
     const review = await Review.findById(reviewId)
       .populate("userId", "username email profile")
-      .populate("productId", "name images price slug")
+      .populate("productId", "name images price")
       .populate("orderId", "orderNumber createdAt")
       .populate("moderatedBy", "username")
       .populate("sellerResponse.respondedBy", "username");

@@ -781,7 +781,7 @@ const getRecentlyViewed = async (req, res) => {
       .select("recentlyViewed")
       .populate({
         path: "recentlyViewed.productId",
-        select: "name price images slug category status inventory",
+        select: "name price images category status inventory",
       });
 
     if (!user) {
@@ -860,7 +860,7 @@ const getCompareList = async (req, res) => {
       .select("compareList")
       .populate({
         path: "compareList",
-        select: "name price images slug category specifications attributes inventory ratings productType",
+        select: "name price images category specifications attributes inventory ratings productType",
       });
 
     if (!user) {
@@ -935,7 +935,7 @@ const toggleCompareProduct = async (req, res) => {
 
     res.json({
       success: true,
-      message: result.added 
+      message: result.added
         ? `${product.name} added to compare list`
         : `${product.name} removed from compare list`,
       data: {
@@ -946,7 +946,7 @@ const toggleCompareProduct = async (req, res) => {
     });
   } catch (error) {
     console.error("Toggle compare product error:", error);
-    
+
     if (error.message === "Compare list is full (max 4 products)") {
       return res.status(400).json({
         success: false,
