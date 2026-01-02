@@ -72,7 +72,6 @@ const requireUserPermission = (permission) => {
       canViewProducts: true,
       canPlaceOrders: true,
       canManageCart: true,
-      canWriteReviews: true,
       canUpdateProfile: true,
     };
 

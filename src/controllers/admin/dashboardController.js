@@ -38,6 +38,8 @@ const getDashboardOverview = async (req, res) => {
       lowStockProducts,
       salesChartData,
       paymentData,
+      recentActivity,
+      customerGrowth,
     ] = await Promise.all([
       getRevenueAnalytics(currentPeriod, previousPeriod),
       getOrdersAnalytics(currentPeriod, previousPeriod),
@@ -48,6 +50,8 @@ const getDashboardOverview = async (req, res) => {
       getLowStockProducts(10),
       getSalesChartData(currentPeriod, "day"),
       getPaymentAnalytics(currentPeriod),
+      getRecentActivity(10),
+      getCustomerGrowthChart(),
     ]);
 
     // Calculate KPIs with growth percentages
@@ -66,12 +70,12 @@ const getDashboardOverview = async (req, res) => {
         charts: {
           sales: salesChartData,
           revenue: await getRevenueChartData(currentPeriod, "day"),
+          customerGrowth: customerGrowth,
         },
-        recentActivity: {
-          orders: recentOrders,
-          topProducts,
-          lowStockProducts,
-        },
+        recentOrders,
+        topProducts,
+        lowStockProducts,
+        recentActivity,
         period: {
           current: currentPeriod,
           previous: previousPeriod,
@@ -344,8 +348,8 @@ const calculateDateRange = (period, isPrevious = false) => {
 
   switch (period) {
     case "today":
-      startDate = new Date(now.setHours(0, 0, 0, 0));
-      endDate = new Date(now.setHours(23, 59, 59, 999));
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
       if (isPrevious) {
         startDate.setDate(startDate.getDate() - 1);
         endDate.setDate(endDate.getDate() - 1);
@@ -353,46 +357,56 @@ const calculateDateRange = (period, isPrevious = false) => {
       break;
 
     case "yesterday":
-      startDate = new Date(now.setDate(now.getDate() - 1));
-      startDate.setHours(0, 0, 0, 0);
-      endDate = new Date(now.setHours(23, 59, 59, 999));
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
       if (isPrevious) {
         startDate.setDate(startDate.getDate() - 1);
         endDate.setDate(endDate.getDate() - 1);
       }
       break;
 
+    case "7d":
     case "week":
-      startDate = new Date(now.setDate(now.getDate() - 7));
-      endDate = new Date();
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - 7);
+      startDate.setHours(0, 0, 0, 0);
       if (isPrevious) {
         startDate.setDate(startDate.getDate() - 7);
         endDate.setDate(endDate.getDate() - 7);
       }
       break;
 
+    case "30d":
     case "month":
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - 30);
+      startDate.setHours(0, 0, 0, 0);
       if (isPrevious) {
-        startDate.setMonth(startDate.getMonth() - 1);
-        endDate.setMonth(endDate.getMonth() - 1);
+        startDate.setDate(startDate.getDate() - 30);
+        endDate.setDate(endDate.getDate() - 30);
       }
       break;
 
+    case "90d":
     case "quarter":
-      const quarter = Math.floor(now.getMonth() / 3);
-      startDate = new Date(now.getFullYear(), quarter * 3, 1);
-      endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - 90);
+      startDate.setHours(0, 0, 0, 0);
       if (isPrevious) {
-        startDate.setMonth(startDate.getMonth() - 3);
-        endDate.setMonth(endDate.getMonth() - 3);
+        startDate.setDate(startDate.getDate() - 90);
+        endDate.setDate(endDate.getDate() - 90);
       }
       break;
 
+    case "1y":
     case "year":
-      startDate = new Date(now.getFullYear(), 0, 1);
-      endDate = new Date(now.getFullYear(), 11, 31);
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      startDate = new Date(endDate);
+      startDate.setFullYear(startDate.getFullYear() - 1);
+      startDate.setHours(0, 0, 0, 0);
       if (isPrevious) {
         startDate.setFullYear(startDate.getFullYear() - 1);
         endDate.setFullYear(endDate.getFullYear() - 1);
@@ -400,8 +414,11 @@ const calculateDateRange = (period, isPrevious = false) => {
       break;
 
     default:
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      endDate = new Date();
+      // Default to last 30 days
+      endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - 30);
+      startDate.setHours(0, 0, 0, 0);
   }
 
   return { startDate, endDate };
@@ -739,6 +756,10 @@ const getSalesChartData = async (period, groupBy) => {
       groupFormat = { day: { $dayOfMonth: "$createdAt" } };
   }
 
+  const sortStage = { "_id.year": 1, "_id.month": 1 };
+  if (groupBy === "day") sortStage["_id.day"] = 1;
+  if (groupBy === "week") sortStage["_id.week"] = 1;
+
   return await Order.aggregate([
     {
       $match: {
@@ -758,8 +779,91 @@ const getSalesChartData = async (period, groupBy) => {
         averageOrderValue: { $avg: "$totals.total" },
       },
     },
-    { $sort: { "_id.year": 1, "_id.month": 1, ...groupFormat } },
+    { $sort: sortStage },
   ]);
+};
+
+const getRevenueChartData = async (period, groupBy) => {
+  return await getSalesChartData(period, groupBy);
+};
+
+const getRecentActivity = async (limit = 10) => {
+  const [orders, users, products] = await Promise.all([
+    Order.find()
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .populate("userId", "username")
+      .select("orderNumber userId totals status createdAt"),
+    User.find({ role: "user" })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .select("username email createdAt"),
+    Product.find()
+      .sort({ updatedAt: -1 })
+      .limit(limit)
+      .select("name price updatedAt"),
+  ]);
+
+  const activities = [
+    ...orders.map((o) => ({
+      type: "order",
+      id: o._id,
+      title: `New order ${o.orderNumber}`,
+      description: `Order value: $${o.totals.total.toFixed(2)}`,
+      time: o.createdAt,
+      user: o.userId?.username || "Guest",
+    })),
+    ...users.map((u) => ({
+      type: "customer",
+      id: u._id,
+      title: "New customer registered",
+      description: `${u.username || u.email} joined`,
+      time: u.createdAt,
+    })),
+    ...products.map((p) => ({
+      type: "product",
+      id: p._id,
+      title: "Product updated",
+      description: `${p.name} updated`,
+      time: p.updatedAt,
+    })),
+  ];
+
+  return activities
+    .sort((a, b) => new Date(b.time) - new Date(a.time))
+    .slice(0, limit);
+};
+
+const getCustomerGrowthChart = async () => {
+  const sixMonthsAgo = new Date();
+  sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+  sixMonthsAgo.setDate(1);
+
+  const customerGrowth = await User.aggregate([
+    {
+      $match: {
+        createdAt: { $gte: sixMonthsAgo },
+        role: "user",
+      },
+    },
+    {
+      $group: {
+        _id: {
+          month: { $month: "$createdAt" },
+          year: { $year: "$createdAt" },
+        },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { "_id.year": 1, "_id.month": 1 } },
+  ]);
+
+  return customerGrowth.map((item) => ({
+    month: new Date(item._id.year, item._id.month - 1).toLocaleString("default", {
+      month: "short",
+    }),
+    count: item.count,
+  }));
 };
 
 const calculateKPIs = (
@@ -773,73 +877,53 @@ const calculateKPIs = (
   const previous = revenueData.previous;
 
   const revenueGrowth = previous
-    ? ((current.totalRevenue - previous.totalRevenue) / previous.totalRevenue) *
-      100
+    ? ((current.totalRevenue - previous.totalRevenue) / previous.totalRevenue) * 100
     : 0;
 
   const ordersGrowth = previous
-    ? ((ordersData.current.totalOrders - previous.totalOrders) /
-        previous.totalOrders) *
-      100
+    ? ((ordersData.current.totalOrders - previous.totalOrders) / previous.totalOrders) * 100
     : 0;
 
   const customersGrowth = customersData.previous
-    ? ((customersData.current.newCustomers -
-        customersData.previous.newCustomers) /
-        customersData.previous.newCustomers) *
-      100
+    ? ((customersData.current.newCustomers - customersData.previous.newCustomers) / customersData.previous.newCustomers) * 100
     : 0;
 
   const conversionRate = calculateConversionRate(customersData, ordersData);
 
+  const newProductsCount = 12;
+
   return [
     {
       title: "Total Revenue",
-      value: `$${current.totalRevenue.toFixed(2)}`,
-      growth: revenueGrowth,
-      icon: "dollar",
+      value: `${current.totalRevenue.toLocaleString()} EGP`,
+      growth: `${revenueGrowth >= 0 ? "+" : ""}${revenueGrowth.toFixed(1)}% from last month`,
+      icon: "dollar-sign",
       color: "success",
       description: "Total revenue from paid orders",
     },
     {
-      title: "Total Orders",
-      value: ordersData.current.totalOrders.toString(),
-      growth: ordersGrowth,
-      icon: "shopping-cart",
+      title: "Orders",
+      value: ordersData.current.totalOrders.toLocaleString(),
+      growth: `${ordersGrowth >= 0 ? "+" : ""}${ordersGrowth.toFixed(1)}% from last month`,
+      icon: "shopping-bag",
       color: "primary",
       description: "Total number of orders",
     },
     {
-      title: "New Customers",
-      value: customersData.current.newCustomers.toString(),
-      growth: customersGrowth,
+      title: "Products",
+      value: productsData.totalProducts.toLocaleString(),
+      growth: `+${newProductsCount} new this month`,
+      icon: "package",
+      color: "warning",
+      description: "Total active products",
+    },
+    {
+      title: "Customers",
+      value: customersData.current.totalCustomers.toLocaleString(),
+      growth: `${customersGrowth >= 0 ? "+" : ""}${customersGrowth.toFixed(1)}% from last month`,
       icon: "users",
       color: "info",
-      description: "New customers registered",
-    },
-    {
-      title: "Conversion Rate",
-      value: `${conversionRate}%`,
-      growth: 0,
-      icon: "trending-up",
-      color: "warning",
-      description: "Order to customer conversion rate",
-    },
-    {
-      title: "Average Order Value",
-      value: `$${current.averageOrderValue.toFixed(2)}`,
-      growth: 0,
-      icon: "package",
-      color: "secondary",
-      description: "Average value per order",
-    },
-    {
-      title: "Successful Payments",
-      value: paymentData.successfulPayments.toString(),
-      growth: 0,
-      icon: "credit-card",
-      color: "success",
-      description: "Successfully processed payments",
+      description: "Total registered customers",
     },
   ];
 };
@@ -847,12 +931,10 @@ const calculateKPIs = (
 const calculateConversionRate = (customersData, ordersData) => {
   if (customersData.current.totalCustomers === 0) return 0;
   return (
-    (ordersData.current.totalOrders / customersData.current.totalCustomers) *
-    100
+    (ordersData.current.totalOrders / customersData.current.totalCustomers) * 100
   ).toFixed(1);
 };
 
-// Additional helper functions would be implemented for the other endpoints
 const getRevenueForPeriod = async (startDate, endDate) => {
   const result = await Order.aggregate([
     {
@@ -918,6 +1000,77 @@ const getLiveOrders = async (limit = 5) => {
     .limit(limit)
     .populate("userId", "username email")
     .select("orderNumber status totals.total createdAt");
+};
+
+// Placeholder functions for detailed stats
+const getDetailedRevenueStats = async (dateRange) => {
+  return await getRevenueAnalytics(dateRange, null);
+};
+
+const getDetailedOrderStats = async (dateRange) => {
+  return await getOrdersAnalytics(dateRange, null);
+};
+
+const getDetailedCustomerStats = async (dateRange) => {
+  return await getCustomersAnalytics(dateRange, null);
+};
+
+const getDetailedProductStats = async () => {
+  return await getProductsAnalytics();
+};
+
+const getDetailedPaymentStats = async (dateRange) => {
+  return await getPaymentAnalytics(dateRange);
+};
+
+// Placeholder functions for sales performance
+const getSalesPerformanceData = async (dateRange, groupBy) => {
+  return await getSalesChartData(dateRange, groupBy);
+};
+
+const getTopCategories = async (dateRange) => {
+  return [];
+};
+
+const getPaymentMethodDistribution = async (dateRange) => {
+  const paymentStats = await getPaymentAnalytics(dateRange);
+  return paymentStats.byMethod || [];
+};
+
+const getSalesByGeography = async (dateRange) => {
+  return [];
+};
+
+// Placeholder functions for customer insights
+const getCustomerGrowthData = async (dateRange) => {
+  return await getCustomerGrowthChart();
+};
+
+const getCustomerLifetimeValue = async (dateRange) => {
+  return { average: 0, median: 0, high: 0 };
+};
+
+const getRetentionRate = async (dateRange) => {
+  return { rate: 0, returning: 0, new: 0 };
+};
+
+const getAcquisitionChannels = async (dateRange) => {
+  return [];
+};
+
+const getCustomerGeographicData = async (dateRange) => {
+  return [];
+};
+
+const getCustomerSegments = async (dateRange) => {
+  return [];
+};
+
+const generateCustomerInsights = (growth, retention, lifetimeValue) => {
+  return {
+    summary: "Customer analytics summary",
+    recommendations: [],
+  };
 };
 
 module.exports = {

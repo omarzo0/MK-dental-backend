@@ -31,7 +31,7 @@ const validateRemoveCartItem = [
 ];
 
 const validateApplyCoupon = [
-  body("code")
+  body("couponCode")
     .notEmpty()
     .withMessage("Coupon code is required")
     .isLength({ min: 3, max: 20 })

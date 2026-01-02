@@ -23,14 +23,15 @@ const productSchema = new mongoose.Schema({
   name: { type: String, required: true },
   description: { type: String, required: true },
   category: { type: String, required: true },
-
+  subcategory: { type: String },
+  
   // Product Type: single product or package bundle
   productType: {
     type: String,
     enum: ["single", "package"],
     default: "single",
   },
-
+  
   // Package-specific fields (only used when productType is "package")
   packageItems: [packageItemSchema],
   packageDetails: {
@@ -39,8 +40,9 @@ const productSchema = new mongoose.Schema({
     savings: { type: Number, default: 0 }, // How much customer saves
     savingsPercentage: { type: Number, default: 0 },
   },
-
+  
   price: { type: Number, required: true },
+  comparePrice: { type: Number },
   cost: { type: Number },
   inventory: {
     quantity: { type: Number, required: true, default: 0 },
@@ -49,6 +51,7 @@ const productSchema = new mongoose.Schema({
   },
   images: [{ type: String }],
   specifications: {
+    brand: { type: String },
     model: { type: String },
     color: { type: String },
     storage: { type: String },
@@ -56,6 +59,7 @@ const productSchema = new mongoose.Schema({
   seo: {
     metaTitle: { type: String },
     metaDescription: { type: String },
+    slug: { type: String, unique: true },
   },
   tags: [{ type: String }],
   status: {
@@ -64,6 +68,17 @@ const productSchema = new mongoose.Schema({
     default: "active",
   },
   featured: { type: Boolean, default: false },
+  discount: {
+    type: {
+      type: String,
+      enum: ["percentage", "fixed"],
+    },
+    value: { type: Number, default: 0 },
+    discountedPrice: { type: Number },
+    startDate: { type: Date },
+    endDate: { type: Date },
+    isActive: { type: Boolean, default: false },
+  },
   ratings: {
     average: { type: Number, default: 0, min: 0, max: 5 },
     count: { type: Number, default: 0 },

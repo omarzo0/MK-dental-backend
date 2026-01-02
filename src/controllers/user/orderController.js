@@ -3,7 +3,10 @@ const Order = require("../../models/Order");
 const Product = require("../../models/Product");
 const Cart = require("../../models/Cart");
 const Payment = require("../../models/Payment");
+const Coupon = require("../../models/Coupon");
+const PaymentSettings = require("../../models/PaymentSettings");
 const { validationResult } = require("express-validator");
+const { sendOrderConfirmationEmail, sendNewOrderAdminNotification } = require("../../services/emailService");
 
 // @desc    Get user's orders
 // @route   GET /api/user/orders
@@ -41,7 +44,7 @@ const getUserOrders = async (req, res) => {
       .sort(sortConfig)
       .limit(limit * 1)
       .skip((page - 1) * limit)
-      .populate("items.productId", "name images")
+      .populate("items.productId", "name images slug")
       .select("-__v");
 
     const totalOrders = await Order.countDocuments(filter);
@@ -103,7 +106,7 @@ const getOrderById = async (req, res) => {
       _id: orderId,
       userId: userId,
     })
-      .populate("items.productId", "name images specifications")
+      .populate("items.productId", "name images slug specifications")
       .populate("userId", "username email profile");
 
     if (!order) {
@@ -126,7 +129,7 @@ const getOrderById = async (req, res) => {
       _id: { $ne: order.items[0]?.productId?._id },
     })
       .limit(4)
-      .select("name price images");
+      .select("name price images slug");
 
     res.json({
       success: true,
@@ -170,6 +173,18 @@ const createOrder = async (req, res) => {
     } = req.body;
 
     const userId = req.user.userId;
+
+    // Validate payment method against configured methods
+    const settings = await PaymentSettings.getSettings();
+    const configuredMethods = settings?.methods || [];
+    const validMethod = configuredMethods.find(m => m.name === paymentMethod && m.enabled);
+    
+    if (!validMethod) {
+      return res.status(400).json({
+        success: false,
+        message: `Payment method '${paymentMethod}' is not available`,
+      });
+    }
 
     // Get user's cart
     const cart = await Cart.findOne({ userId }).populate("items.productId");
@@ -232,6 +247,7 @@ const createOrder = async (req, res) => {
         quantity: cartItem.quantity,
         subtotal: itemTotal,
         image: product.images?.[0],
+        sku: product.sku,
         productType: product.productType || "single",
       };
 
@@ -266,25 +282,28 @@ const createOrder = async (req, res) => {
       });
     }
 
+    // Check if coupon has free shipping
+    const hasFreeShipping = cart.coupon && (cart.coupon.freeShipping || cart.coupon.discountType === 'free_shipping');
+    
     // Calculate totals
-    let shippingFee = cart.summary.shippingFee || 0;
-
-    // Fallback if no shipping location details selected (can happen if UI doesn't force it)
-    if (!cart.selectedShippingFee && shippingMethod) {
-      shippingFee = calculateShippingFee(shippingMethod, subtotal);
-    }
-
-    // Check for free shipping coupon
-    if (cart.coupon && (cart.coupon.freeShipping || cart.coupon.discountType === "free_shipping")) {
-      shippingFee = 0;
-    }
-
+    const baseShippingFee = calculateShippingFee(shippingMethod, subtotal);
+    const shippingFee = hasFreeShipping ? 0 : baseShippingFee;
     const taxAmount = calculateTax(subtotal, shippingAddress.state);
     const discount = cart.summary.totalDiscount || 0;
     const total = subtotal + shippingFee + taxAmount - discount;
 
     // Generate order number
     const orderNumber = await generateOrderNumber();
+
+    // Prepare coupon data for order
+    let couponData = undefined;
+    if (cart.coupon && cart.coupon.code) {
+      couponData = {
+        code: cart.coupon.code,
+        discount: cart.coupon.calculatedDiscount || 0,
+        discountType: cart.coupon.discountType,
+      };
+    }
 
     // Create order
     const order = new Order({
@@ -304,21 +323,27 @@ const createOrder = async (req, res) => {
         ? shippingAddress
         : billingAddress,
       shippingMethod,
-      shippingLocation: cart.selectedShippingFee?.name,
       paymentMethod,
+      coupon: couponData,
       notes,
-      coupon: cart.coupon ? {
-        code: cart.coupon.code,
-        couponId: cart.coupon.couponId,
-        discount: discount,
-        discountValue: cart.coupon.discountValue,
-        discountType: cart.coupon.discountType,
-      } : undefined,
       status: "pending",
       paymentStatus: "pending",
     });
 
     await order.save();
+
+    // Record coupon usage if a coupon was applied
+    if (cart.coupon && cart.coupon.couponId) {
+      try {
+        const coupon = await Coupon.findById(cart.coupon.couponId);
+        if (coupon) {
+          await coupon.recordUsage(userId);
+        }
+      } catch (couponError) {
+        console.error("Error recording coupon usage:", couponError);
+        // Don't fail the order if coupon usage recording fails
+      }
+    }
 
     // Clear the cart after successful order creation
     await Cart.findOneAndUpdate(
@@ -350,6 +375,19 @@ const createOrder = async (req, res) => {
       status: "pending",
     });
     await payment.save();
+
+    // Send order confirmation email to customer
+    sendOrderConfirmationEmail(order).catch(err => {
+      console.error("Failed to send order confirmation email:", err);
+    });
+
+    // Send notification email to admin
+    const adminEmail = process.env.ADMIN_EMAIL || process.env.EMAIL_FROM_ADDRESS;
+    if (adminEmail) {
+      sendNewOrderAdminNotification(order, adminEmail).catch(err => {
+        console.error("Failed to send admin notification email:", err);
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -960,6 +998,7 @@ const createGuestOrder = async (req, res) => {
         quantity: item.quantity,
         subtotal: itemTotal,
         image: product.images?.[0],
+        sku: product.sku,
         productType: product.productType || "single",
       };
 
@@ -1218,7 +1257,7 @@ const getOrderTimeline = async (req, res) => {
       timeline.push({
         status: "shipped",
         title: "Shipped",
-        description: order.trackingNumber
+        description: order.trackingNumber 
           ? `Package shipped with tracking number: ${order.trackingNumber}`
           : "Your package has been shipped",
         date: order.shippedAt || order.updatedAt,
@@ -1255,7 +1294,7 @@ const getOrderTimeline = async (req, res) => {
     // Add estimated steps for non-delivered orders
     if (!["delivered", "cancelled", "refunded"].includes(order.status)) {
       const estimatedDelivery = calculateEstimatedDelivery(order.createdAt, order.shippingMethod);
-
+      
       if (order.status !== "shipped") {
         timeline.push({
           status: "shipped",
@@ -1310,7 +1349,7 @@ const downloadInvoice = async (req, res) => {
     const order = await Order.findOne({
       _id: orderId,
       userId: userId,
-    }).populate("items.productId", "name");
+    }).populate("items.productId", "name sku");
 
     if (!order) {
       return res.status(404).json({
@@ -1329,6 +1368,7 @@ const downloadInvoice = async (req, res) => {
       billingAddress: order.billingAddress || order.shippingAddress,
       items: order.items.map(item => ({
         name: item.name,
+        sku: item.sku || item.productId?.sku,
         quantity: item.quantity,
         price: item.price,
         subtotal: item.subtotal,

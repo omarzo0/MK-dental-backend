@@ -13,7 +13,7 @@ const validateOrderQuery = [
 
   query("status")
     .optional()
-    .isIn(["pending", "confirmed", "shipped", "delivered", "cancelled"])
+    .isIn(["pending", "confirmed", "shipped", "delivered", "completed", "cancelled", "returned"])
     .withMessage("Invalid order status"),
 
   query("paymentStatus")
@@ -51,7 +51,7 @@ const validateOrderStatusUpdate = [
   param("id").isMongoId().withMessage("Valid order ID is required"),
 
   body("status")
-    .isIn(["pending", "confirmed", "shipped", "delivered", "cancelled"])
+    .isIn(["pending", "confirmed", "shipped", "delivered", "completed", "cancelled", "returned"])
     .withMessage("Invalid order status"),
 
   body("trackingNumber")

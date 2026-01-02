@@ -1,7 +1,8 @@
+// validations/admin/transactionValidation.js
 const { body, param, query } = require("express-validator");
+const mongoose = require("mongoose");
 const Transaction = require("../../models/Transaction");
 const Payment = require("../../models/Payment");
-const Order = require("../../models/Order");
 
 // Create transaction validation
 const validateCreateTransaction = [
@@ -46,7 +47,7 @@ const validateCreateTransaction = [
     .optional()
     .isLength({ min: 3, max: 3 })
     .withMessage("Currency must be a 3-letter code")
-    .default("USD"),
+    .default("EGP"),
 
   body("gatewayResponse")
     .optional()
@@ -147,10 +148,6 @@ const validateTransactionQuery = [
 
 // Refund transaction validation
 const validateRefundTransaction = [
-  param("transactionId")
-    .isMongoId()
-    .withMessage("Valid transaction ID is required"),
-
   body("refundAmount")
     .optional()
     .isFloat({ min: 0.01 })
@@ -164,10 +161,6 @@ const validateRefundTransaction = [
 
 // Update transaction status validation
 const validateUpdateTransactionStatus = [
-  param("transactionId")
-    .isMongoId()
-    .withMessage("Valid transaction ID is required"),
-
   body("status")
     .notEmpty()
     .withMessage("Status is required")

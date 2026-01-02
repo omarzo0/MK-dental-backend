@@ -64,24 +64,26 @@ const userProfileRoutes = require("./src/routes/user/profileRoutes");
 const userOrderRoutes = require("./src/routes/user/orderRoutes");
 const userCartRoutes = require("./src/routes/user/cartRoutes");
 const userWishlistRoutes = require("./src/routes/user/wishlistRoutes");
-const userReviewRoutes = require("./src/routes/user/reviewRoutes");
 
 // Admin Routes
 const adminAuthRoutes = require("./src/routes/admin/authRoutes");
 const adminDashboardRoutes = require("./src/routes/admin/dashboardRoutes");
-const adminUserRoutes = require("./src/routes/admin/userRoutes");
 const adminProductRoutes = require("./src/routes/admin/productRoutes");
 const adminOrderRoutes = require("./src/routes/admin/orderRoutes");
-const adminReviewRoutes = require("./src/routes/admin/reviewRoutes");
+const adminShippingRoutes = require("./src/routes/admin/shippingFeeRoutes");
 const adminCouponRoutes = require("./src/routes/admin/couponRoutes");
 const adminCategoryRoutes = require("./src/routes/admin/categoryRoutes");
-const adminSettingsRoutes = require("./src/routes/admin/settingsRoutes");
-const adminShippingFeeRoutes = require("./src/routes/admin/shippingFeeRoutes");
+const adminManagementRoutes = require("./src/routes/admin/adminManagementRoutes");
+const adminTransactionRoutes = require("./src/routes/admin/transactionRoutes");
+const adminPaymentRoutes = require("./src/routes/admin/paymentRoutes");
+const adminBannerRoutes = require("./src/routes/admin/bannerRoutes");
+
+// User Payment Routes
+const userPaymentRoutes = require("./src/routes/user/paymentRoutes");
+const userBannerRoutes = require("./src/routes/user/bannerRoutes");
 
 // Shared Routes
 const sharedProductRoutes = require("./src/routes/shared/productRoutes");
-const sharedPaymentRoutes = require("./src/routes/shared/paymentRoutes");
-const sharedTransactionRoutes = require("./src/routes/shared/transactionRoutes");
 
 // ==================== API ROUTES REGISTRATION ====================
 
@@ -91,24 +93,26 @@ app.use("/api/user/profile", userProfileRoutes);
 app.use("/api/user/orders", userOrderRoutes);
 app.use("/api/user/cart", userCartRoutes);
 app.use("/api/user/wishlist", userWishlistRoutes);
-app.use("/api/user/reviews", userReviewRoutes);
 
 // Admin API Routes
 app.use("/api/admin/auth", adminAuthRoutes);
 app.use("/api/admin/dashboard", adminDashboardRoutes);
-app.use("/api/admin/users", adminUserRoutes);
 app.use("/api/admin/products", adminProductRoutes);
 app.use("/api/admin/orders", adminOrderRoutes);
-app.use("/api/admin/reviews", adminReviewRoutes);
+app.use("/api/admin/shipping-fees", adminShippingRoutes);
 app.use("/api/admin/coupons", adminCouponRoutes);
 app.use("/api/admin/categories", adminCategoryRoutes);
-app.use("/api/admin/settings", adminSettingsRoutes);
-app.use("/api/admin/shipping-fees", adminShippingFeeRoutes);
+app.use("/api/admin/admin-management", adminManagementRoutes);
+app.use("/api/admin/transactions", adminTransactionRoutes);
+app.use("/api/admin/payments", adminPaymentRoutes);
+app.use("/api/admin/banners", adminBannerRoutes);
+
+// User Payment Routes
+app.use("/api/user/payments", userPaymentRoutes);
+app.use("/api/user/banners", userBannerRoutes);
 
 // Shared API Routes
 app.use("/api/products", sharedProductRoutes);
-app.use("/api/payments", sharedPaymentRoutes);
-app.use("/api/transactions", sharedTransactionRoutes);
 
 // ==================== PUBLIC ROUTES ====================
 

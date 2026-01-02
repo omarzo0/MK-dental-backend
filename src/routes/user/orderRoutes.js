@@ -27,7 +27,7 @@ const {
 } = require("../../validations/user/orderValidation");
 
 // Public routes (no authentication required)
-router.post("/guest", validateGuestOrder, createGuestOrder);
+router.post("/", validateGuestOrder, createOrder);
 router.get("/track/:orderNumber", validateGuestTracking, trackGuestOrder);
 
 // Protected routes (require user authentication)
@@ -35,7 +35,6 @@ router.use(userAuth);
 
 router.get("/", validateOrderQuery, getUserOrders);
 router.get("/:orderId", validateOrderId, getOrderById);
-router.post("/", validateCreateOrder, createOrder);
 router.put(
   "/:orderId/cancel",
   validateOrderId,

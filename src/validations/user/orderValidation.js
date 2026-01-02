@@ -156,6 +156,16 @@ const validateGuestOrder = [
     .isMobilePhone()
     .withMessage("Please provide a valid phone number"),
 
+  body("customerInfo.gender")
+    .optional()
+    .isIn(["male", "female", "other"])
+    .withMessage("Invalid gender"),
+
+  body("customerInfo.dateOfBirth")
+    .optional()
+    .isISO8601()
+    .withMessage("Invalid date of birth format"),
+
   body("items")
     .isArray({ min: 1 })
     .withMessage("At least one item is required"),

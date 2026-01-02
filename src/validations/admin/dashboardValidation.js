@@ -30,6 +30,11 @@ const validateDashboardPeriod = [
 ];
 
 const validateSalesPerformanceQuery = [
+  query("period")
+    .optional()
+    .isIn(["7d", "30d", "90d", "1y", "today", "yesterday", "week", "month", "quarter", "year", "custom"])
+    .withMessage("Period must be 7d, 30d, 90d, 1y, today, yesterday, week, month, quarter, year, or custom"),
+
   query("metric")
     .optional()
     .isIn(["revenue", "orders", "customers", "aov"])

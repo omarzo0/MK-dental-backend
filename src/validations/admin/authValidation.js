@@ -94,9 +94,41 @@ const validateAdminChangePassword = [
   }),
 ];
 
+const validateAdminForgotPassword = [
+  body("email")
+    .isEmail()
+    .normalizeEmail()
+    .withMessage("Please provide a valid email"),
+];
+
+const validateAdminResetPassword = [
+  body("token")
+    .notEmpty()
+    .withMessage("Reset token is required")
+    .isLength({ min: 64, max: 64 })
+    .withMessage("Invalid reset token format"),
+
+  body("newPassword")
+    .isLength({ min: 8 })
+    .withMessage("New password must be at least 8 characters long")
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/)
+    .withMessage(
+      "Password must contain at least one lowercase, one uppercase, one number and one special character"
+    ),
+
+  body("confirmPassword").custom((value, { req }) => {
+    if (value !== req.body.newPassword) {
+      throw new Error("Passwords do not match");
+    }
+    return true;
+  }),
+];
+
 module.exports = {
   validateAdminRegister,
   validateAdminLogin,
   validateAdminUpdateProfile,
   validateAdminChangePassword,
+  validateAdminForgotPassword,
+  validateAdminResetPassword,
 };

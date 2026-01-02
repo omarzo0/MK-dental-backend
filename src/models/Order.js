@@ -22,6 +22,7 @@ const orderSchema = new mongoose.Schema({
       quantity: { type: Number, required: true },
       subtotal: { type: Number, required: true },
       image: { type: String },
+      sku: { type: String },
       // Product type: single or package
       productType: {
         type: String,
@@ -67,7 +68,7 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["pending", "confirmed", "shipped", "delivered", "cancelled"],
+    enum: ["pending", "confirmed", "shipped", "delivered", "cancelled", "returned"],
     default: "pending",
   },
   paymentStatus: {
@@ -76,18 +77,16 @@ const orderSchema = new mongoose.Schema({
     default: "pending",
   },
   shippingMethod: { type: String },
-  shippingLocation: { type: String },
   trackingNumber: { type: String },
   handledBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
-
+  
+  // Coupon applied to order
   coupon: {
     code: { type: String },
-    couponId: { type: mongoose.Schema.Types.ObjectId, ref: "Coupon" },
     discount: { type: Number, default: 0 },
-    discountValue: { type: Number },
     discountType: { type: String, enum: ["percentage", "fixed", "free_shipping"] },
   },
-
+  
   // Order notes
   notes: [{
     _id: { type: mongoose.Schema.Types.ObjectId, default: () => new mongoose.Types.ObjectId() },
@@ -96,7 +95,7 @@ const orderSchema = new mongoose.Schema({
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
     createdAt: { type: Date, default: Date.now },
   }],
-
+  
   // Refund information
   refund: {
     amount: { type: Number },
@@ -105,22 +104,23 @@ const orderSchema = new mongoose.Schema({
     processedAt: { type: Date },
     processedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
   },
-
+  
   // Cancellation information
   cancellation: {
     reason: { type: String },
     cancelledAt: { type: Date },
     cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "Admin" },
   },
-
+  
   // Payment method
   paymentMethod: { type: String },
-
+  
   // Timestamps for tracking
   confirmedAt: { type: Date },
   shippedAt: { type: Date },
   deliveredAt: { type: Date },
-
+  returnedAt: { type: Date },
+  
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });

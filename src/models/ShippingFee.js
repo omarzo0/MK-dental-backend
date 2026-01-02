@@ -8,15 +8,24 @@ const shippingFeeSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
-    shippingFee: {
+    fee: {
       type: Number,
-      required: [true, "Shipping fee is required"],
+      default: 0,
       min: [0, "Shipping fee cannot be negative"],
+      // Fee is required only when isFreeShipping is false
+      validate: {
+        validator: function(value) {
+          // If free shipping, fee can be 0 or any value
+          if (this.isFreeShipping) return true;
+          // Otherwise, fee must be a valid number >= 0
+          return value !== undefined && value !== null && value >= 0;
+        },
+        message: "Shipping fee is required when free shipping is disabled"
+      }
     },
-    freeShippingThreshold: {
-      type: Number,
-      default: null,
-      min: [0, "Threshold cannot be negative"],
+    isFreeShipping: {
+      type: Boolean,
+      default: false,
     },
     isActive: {
       type: Boolean,

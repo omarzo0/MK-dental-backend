@@ -96,7 +96,7 @@ const createShippingFee = async (req, res) => {
             });
         }
 
-        const { name, shippingFee: feeAmount, freeShippingThreshold, isActive } = req.body;
+        const { name, fee, isFreeShipping = false, isActive = true } = req.body;
 
         // Check if name already exists
         const existing = await ShippingFee.findOne({ name: { $regex: new RegExp(`^${name}$`, "i") } });
@@ -109,8 +109,8 @@ const createShippingFee = async (req, res) => {
 
         const shippingFee = new ShippingFee({
             name,
-            shippingFee: feeAmount,
-            freeShippingThreshold,
+            fee,
+            isFreeShipping,
             isActive,
             createdBy: req.admin.adminId,
         });
@@ -147,7 +147,7 @@ const updateShippingFee = async (req, res) => {
         }
 
         const { id } = req.params;
-        const { name, shippingFee: feeAmount, freeShippingThreshold, isActive } = req.body;
+        const { name, fee, isFreeShipping, isActive } = req.body;
 
         const shippingFee = await ShippingFee.findById(id);
         if (!shippingFee) {
@@ -171,9 +171,8 @@ const updateShippingFee = async (req, res) => {
             shippingFee.name = name;
         }
 
-        if (feeAmount !== undefined) shippingFee.shippingFee = feeAmount;
-        if (freeShippingThreshold !== undefined)
-            shippingFee.freeShippingThreshold = freeShippingThreshold;
+        if (fee !== undefined) shippingFee.fee = fee;
+        if (isFreeShipping !== undefined) shippingFee.isFreeShipping = isFreeShipping;
         if (isActive !== undefined) shippingFee.isActive = isActive;
 
         shippingFee.updatedBy = req.admin.adminId;

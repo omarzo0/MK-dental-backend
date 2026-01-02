@@ -14,7 +14,11 @@ const adminSchema = new mongoose.Schema({
     lastName: { type: String, required: true },
     phone: { type: String },
   },
-
+  passwordReset: {
+    token: { type: String },
+    expiresAt: { type: Date },
+    lastRequestedAt: { type: Date },
+  },
   lastLogin: { type: Date, default: Date.now },
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now },

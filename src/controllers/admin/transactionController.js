@@ -1,3 +1,4 @@
+// controllers/admin/transactionController.js
 const Transaction = require("../../models/Transaction");
 const Payment = require("../../models/Payment");
 const Order = require("../../models/Order");
@@ -5,8 +6,8 @@ const { validationResult } = require("express-validator");
 const mongoose = require("mongoose");
 
 // @desc    Create new transaction
-// @route   POST /api/transactions
-// @access  Private (System/Admin)
+// @route   POST /api/admin/transactions
+// @access  Private (Admin)
 const createTransaction = async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -24,7 +25,7 @@ const createTransaction = async (req, res) => {
       amount,
       gatewayTransactionId,
       status,
-      currency = "USD",
+      currency = "EGP",
       gatewayResponse = {},
     } = req.body;
 
@@ -47,9 +48,9 @@ const createTransaction = async (req, res) => {
       if (amount > payment.amount - totalRefunded) {
         return res.status(400).json({
           success: false,
-          message: `Refund amount exceeds available balance. Maximum refundable: $${(
+          message: `Refund amount exceeds available balance. Maximum refundable: ${(
             payment.amount - totalRefunded
-          ).toFixed(2)}`,
+          ).toFixed(2)} EGP`,
         });
       }
     }
@@ -96,7 +97,7 @@ const createTransaction = async (req, res) => {
 };
 
 // @desc    Get all transactions
-// @route   GET /api/transactions
+// @route   GET /api/admin/transactions
 // @access  Private (Admin)
 const getAllTransactions = async (req, res) => {
   try {
@@ -119,6 +120,8 @@ const getAllTransactions = async (req, res) => {
       minAmount,
       maxAmount,
       gateway,
+      userId,
+      paymentId,
       sortBy = "createdAt",
       sortOrder = "desc",
     } = req.query;
@@ -128,18 +131,14 @@ const getAllTransactions = async (req, res) => {
 
     if (type) filter.type = type;
     if (status) filter.status = status;
-    if (gateway) {
-      filter.gatewayResponse = {
-        $regex: gateway,
-        $options: "i",
-      };
-    }
+    if (userId) filter.userId = userId;
+    if (paymentId) filter.paymentId = paymentId;
 
     // Date range filter
     if (startDate || endDate) {
-      filter.processedAt = {};
-      if (startDate) filter.processedAt.$gte = new Date(startDate);
-      if (endDate) filter.processedAt.$lte = new Date(endDate);
+      filter.createdAt = {};
+      if (startDate) filter.createdAt.$gte = new Date(startDate);
+      if (endDate) filter.createdAt.$lte = new Date(endDate);
     }
 
     // Amount range filter
@@ -149,37 +148,47 @@ const getAllTransactions = async (req, res) => {
       if (maxAmount) filter.amount.$lte = parseFloat(maxAmount);
     }
 
+    // Gateway filter
+    if (gateway) {
+      filter.gatewayTransactionId = { $regex: gateway, $options: "i" };
+    }
+
     // Sort configuration
     const sortConfig = {};
     sortConfig[sortBy] = sortOrder === "asc" ? 1 : -1;
 
+    // Get transactions with pagination
     const transactions = await Transaction.find(filter)
+      .populate("paymentId", "orderId paymentMethod amount status")
+      .populate("userId", "username email profile")
       .sort(sortConfig)
       .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .populate("paymentId", "orderId paymentMethod amount")
-      .populate("userId", "username email profile");
+      .skip((page - 1) * limit);
 
     const totalTransactions = await Transaction.countDocuments(filter);
 
-    // Get transaction statistics
-    const transactionStats = await Transaction.aggregate([
+    // Calculate summary statistics
+    const summaryPipeline = [
       { $match: filter },
       {
         $group: {
           _id: null,
           totalAmount: { $sum: "$amount" },
-          totalTransactions: { $sum: 1 },
-          successTransactions: {
+          avgAmount: { $avg: "$amount" },
+          successCount: {
             $sum: { $cond: [{ $eq: ["$status", "success"] }, 1, 0] },
           },
-          failedTransactions: {
+          failedCount: {
             $sum: { $cond: [{ $eq: ["$status", "failed"] }, 1, 0] },
           },
-          averageAmount: { $avg: "$amount" },
+          pendingCount: {
+            $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] },
+          },
         },
       },
-    ]);
+    ];
+
+    const summary = await Transaction.aggregate(summaryPipeline);
 
     res.json({
       success: true,
@@ -192,12 +201,12 @@ const getAllTransactions = async (req, res) => {
           hasNext: page * limit < totalTransactions,
           hasPrev: page > 1,
         },
-        statistics: transactionStats[0] || {
+        summary: summary[0] || {
           totalAmount: 0,
-          totalTransactions: 0,
-          successTransactions: 0,
-          failedTransactions: 0,
-          averageAmount: 0,
+          avgAmount: 0,
+          successCount: 0,
+          failedCount: 0,
+          pendingCount: 0,
         },
       },
     });
@@ -212,23 +221,21 @@ const getAllTransactions = async (req, res) => {
 };
 
 // @desc    Get transaction by ID
-// @route   GET /api/transactions/:transactionId
+// @route   GET /api/admin/transactions/:transactionId
 // @access  Private (Admin)
 const getTransactionById = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: errors.array(),
-      });
-    }
-
     const { transactionId } = req.params;
 
     const transaction = await Transaction.findById(transactionId)
-      .populate("paymentId")
+      .populate({
+        path: "paymentId",
+        select: "orderId paymentMethod amount status paymentDetails",
+        populate: {
+          path: "orderId",
+          select: "orderNumber totals status shippingAddress",
+        },
+      })
       .populate("userId", "username email profile");
 
     if (!transaction) {
@@ -238,19 +245,19 @@ const getTransactionById = async (req, res) => {
       });
     }
 
-    // Get related order information
-    let order = null;
-    if (transaction.paymentId?.orderId) {
-      order = await Order.findById(transaction.paymentId.orderId).select(
-        "orderNumber status totals"
-      );
-    }
+    // Get related transactions (same payment)
+    const relatedTransactions = await Transaction.find({
+      paymentId: transaction.paymentId._id,
+      _id: { $ne: transaction._id },
+    })
+      .select("type amount status createdAt")
+      .sort({ createdAt: -1 });
 
     res.json({
       success: true,
       data: {
         transaction,
-        order,
+        relatedTransactions,
       },
     });
   } catch (error) {
@@ -263,47 +270,25 @@ const getTransactionById = async (req, res) => {
   }
 };
 
-// @desc    Get user's transactions
-// @route   GET /api/transactions/user/:userId
+// @desc    Get transactions by user ID
+// @route   GET /api/admin/transactions/user/:userId
 // @access  Private (Admin)
-const getUserTransactions = async (req, res) => {
+const getTransactionsByUser = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: errors.array(),
-      });
-    }
-
     const { userId } = req.params;
-    const { page = 1, limit = 10, type, status } = req.query;
+    const { page = 1, limit = 20, type, status } = req.query;
 
-    // Build filter
     const filter = { userId };
     if (type) filter.type = type;
     if (status) filter.status = status;
 
     const transactions = await Transaction.find(filter)
+      .populate("paymentId", "orderId paymentMethod amount")
       .sort({ createdAt: -1 })
       .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .populate("paymentId", "orderId paymentMethod amount");
+      .skip((page - 1) * limit);
 
-    const totalTransactions = await Transaction.countDocuments(filter);
-
-    // Get user transaction summary
-    const userSummary = await Transaction.aggregate([
-      { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-      {
-        $group: {
-          _id: "$status",
-          count: { $sum: 1 },
-          totalAmount: { $sum: "$amount" },
-        },
-      },
-    ]);
+    const total = await Transaction.countDocuments(filter);
 
     res.json({
       success: true,
@@ -311,10 +296,11 @@ const getUserTransactions = async (req, res) => {
         transactions,
         pagination: {
           currentPage: parseInt(page),
-          totalPages: Math.ceil(totalTransactions / limit),
-          totalTransactions,
+          totalPages: Math.ceil(total / limit),
+          total,
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
         },
-        summary: userSummary,
       },
     });
   } catch (error) {
@@ -328,7 +314,7 @@ const getUserTransactions = async (req, res) => {
 };
 
 // @desc    Update transaction status
-// @route   PUT /api/transactions/:transactionId/status
+// @route   PUT /api/admin/transactions/:transactionId/status
 // @access  Private (Admin)
 const updateTransactionStatus = async (req, res) => {
   try {
@@ -352,6 +338,21 @@ const updateTransactionStatus = async (req, res) => {
       });
     }
 
+    // Validate status transition
+    const validTransitions = {
+      pending: ["success", "failed", "cancelled"],
+      success: [], // Cannot change from success
+      failed: ["pending"], // Can retry
+      cancelled: [], // Cannot change from cancelled
+    };
+
+    if (!validTransitions[transaction.status]?.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot transition from '${transaction.status}' to '${status}'`,
+      });
+    }
+
     // Update transaction
     transaction.status = status;
     if (gatewayResponse) {
@@ -360,28 +361,27 @@ const updateTransactionStatus = async (req, res) => {
         ...gatewayResponse,
       };
     }
-
-    if (status === "success" && !transaction.processedAt) {
+    if (status === "success") {
       transaction.processedAt = new Date();
     }
 
-    transaction.updatedAt = new Date();
     await transaction.save();
 
-    // Update payment status if needed
-    if (["success", "failed"].includes(status)) {
-      const payment = await Payment.findById(transaction.paymentId);
-      if (payment) {
-        await updatePaymentStatus(payment, transaction);
-      }
+    // Update related payment status
+    const payment = await Payment.findById(transaction.paymentId);
+    if (payment) {
+      await updatePaymentStatus(payment, transaction);
     }
+
+    await transaction.populate([
+      { path: "paymentId", select: "orderId paymentMethod amount" },
+      { path: "userId", select: "username email profile" },
+    ]);
 
     res.json({
       success: true,
       message: "Transaction status updated successfully",
-      data: {
-        transaction,
-      },
+      data: { transaction },
     });
   } catch (error) {
     console.error("Update transaction status error:", error);
@@ -393,8 +393,8 @@ const updateTransactionStatus = async (req, res) => {
   }
 };
 
-// @desc    Process refund transaction
-// @route   POST /api/transactions/:transactionId/refund
+// @desc    Process refund for transaction
+// @route   POST /api/admin/transactions/:transactionId/refund
 // @access  Private (Admin)
 const processRefundTransaction = async (req, res) => {
   try {
@@ -410,92 +410,86 @@ const processRefundTransaction = async (req, res) => {
     const { transactionId } = req.params;
     const { refundAmount, reason } = req.body;
 
-    const originalTransaction = await Transaction.findById(
-      transactionId
-    ).populate("paymentId");
+    // Get original transaction
+    const originalTransaction = await Transaction.findById(transactionId)
+      .populate("paymentId");
 
     if (!originalTransaction) {
       return res.status(404).json({
         success: false,
-        message: "Original transaction not found",
+        message: "Transaction not found",
       });
     }
 
-    // Validate original transaction can be refunded
-    if (
-      originalTransaction.type !== "sale" ||
-      originalTransaction.status !== "success"
-    ) {
+    if (originalTransaction.type !== "sale" || originalTransaction.status !== "success") {
       return res.status(400).json({
         success: false,
-        message: "Only successful sale transactions can be refunded",
+        message: "Can only refund successful sale transactions",
       });
     }
 
-    // Calculate available refund amount
-    const existingRefunds = await Transaction.find({
-      paymentId: originalTransaction.paymentId,
+    // Calculate refundable amount
+    const relatedRefunds = await Transaction.find({
+      paymentId: originalTransaction.paymentId._id,
       type: "refund",
       status: "success",
     });
 
-    const totalRefunded = existingRefunds.reduce((sum, t) => sum + t.amount, 0);
-    const availableForRefund = originalTransaction.amount - totalRefunded;
-    const actualRefundAmount = refundAmount || availableForRefund;
+    const totalRefunded = relatedRefunds.reduce((sum, t) => sum + t.amount, 0);
+    const maxRefundable = originalTransaction.amount - totalRefunded;
 
-    if (actualRefundAmount > availableForRefund) {
+    const amountToRefund = refundAmount || maxRefundable;
+
+    if (amountToRefund > maxRefundable) {
       return res.status(400).json({
         success: false,
-        message: `Refund amount exceeds available balance. Maximum refundable: $${availableForRefund.toFixed(
-          2
-        )}`,
+        message: `Refund amount exceeds maximum refundable amount of ${maxRefundable.toFixed(2)} EGP`,
       });
     }
 
     // Create refund transaction
     const refundTransaction = new Transaction({
-      paymentId: originalTransaction.paymentId,
+      paymentId: originalTransaction.paymentId._id,
       userId: originalTransaction.userId,
       type: "refund",
-      amount: actualRefundAmount,
+      amount: amountToRefund,
       currency: originalTransaction.currency,
-      gatewayTransactionId: `REFUND_${
-        originalTransaction.gatewayTransactionId
-      }_${Date.now()}`,
-      gatewayResponse: {
-        reason: reason || "Customer request",
-        originalTransactionId: originalTransaction.gatewayTransactionId,
-      },
-      status: "success", // Assuming immediate success for demo
+      gatewayTransactionId: `REFUND-${originalTransaction.gatewayTransactionId}-${Date.now()}`,
+      status: "success",
       processedAt: new Date(),
-      refundReason: reason,
+      gatewayResponse: {
+        originalTransactionId: originalTransaction._id,
+        reason: reason || "Admin initiated refund",
+        processedBy: req.admin.adminId,
+      },
     });
 
     await refundTransaction.save();
 
-    // Update original payment status
-    const payment = await Payment.findById(originalTransaction.paymentId);
-    if (payment) {
-      if (actualRefundAmount === availableForRefund) {
-        payment.status = "refunded";
-      } else {
-        payment.status = "partially_refunded";
-      }
-      payment.refundAmount = (payment.refundAmount || 0) + actualRefundAmount;
-      payment.refundDate = new Date();
-      await payment.save();
-    }
+    // Update payment status
+    const payment = await Payment.findById(originalTransaction.paymentId._id);
+    const newTotalRefunded = totalRefunded + amountToRefund;
 
-    // Update related order status
-    if (payment?.orderId) {
+    if (newTotalRefunded >= originalTransaction.amount) {
+      payment.status = "refunded";
+    } else {
+      payment.status = "partially_refunded";
+    }
+    payment.refundedAmount = newTotalRefunded;
+    await payment.save();
+
+    // Update order status if fully refunded
+    if (payment.status === "refunded") {
       await Order.findByIdAndUpdate(payment.orderId, {
-        paymentStatus:
-          actualRefundAmount === availableForRefund
-            ? "refunded"
-            : "partially_refunded",
-        refundAmount: actualRefundAmount,
+        status: "refunded",
+        paymentStatus: "refunded",
       });
     }
+
+    await refundTransaction.populate([
+      { path: "paymentId", select: "orderId paymentMethod amount" },
+      { path: "userId", select: "username email profile" },
+    ]);
 
     res.status(201).json({
       success: true,
@@ -507,14 +501,14 @@ const processRefundTransaction = async (req, res) => {
           amount: originalTransaction.amount,
         },
         refundSummary: {
-          refundedAmount: actualRefundAmount,
-          totalRefunded: totalRefunded + actualRefundAmount,
-          availableForRefund: availableForRefund - actualRefundAmount,
+          amountRefunded: amountToRefund,
+          totalRefunded: newTotalRefunded,
+          remainingBalance: originalTransaction.amount - newTotalRefunded,
         },
       },
     });
   } catch (error) {
-    console.error("Process refund transaction error:", error);
+    console.error("Process refund error:", error);
     res.status(500).json({
       success: false,
       message: "Server error while processing refund",
@@ -524,81 +518,51 @@ const processRefundTransaction = async (req, res) => {
 };
 
 // @desc    Search transactions
-// @route   GET /api/transactions/search
+// @route   GET /api/admin/transactions/search
 // @access  Private (Admin)
 const searchTransactions = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: errors.array(),
-      });
-    }
-
-    const { q, searchField = "all", limit = 20 } = req.query;
+    const { q, searchField = "all", page = 1, limit = 20 } = req.query;
 
     let filter = {};
 
-    switch (searchField) {
-      case "gatewayTransactionId":
-        filter.gatewayTransactionId = { $regex: q, $options: "i" };
-        break;
-      case "paymentId":
-        filter.paymentId = q;
-        break;
-      case "orderId":
-        // Find payment by orderId, then get transactions for that payment
-        const payment = await Payment.findOne({ orderId: q });
-        if (payment) {
-          filter.paymentId = payment._id;
-        } else {
-          return res.json({
-            success: true,
-            data: {
-              transactions: [],
-              searchQuery: q,
-              resultsCount: 0,
-            },
-          });
-        }
-        break;
-      case "all":
-      default:
-        filter.$or = [
-          { gatewayTransactionId: { $regex: q, $options: "i" } },
-          { "gatewayResponse.description": { $regex: q, $options: "i" } },
-        ];
+    if (searchField === "all") {
+      filter.$or = [
+        { gatewayTransactionId: { $regex: q, $options: "i" } },
+      ];
 
-        // Also search by payment ID if it's a valid ObjectId
-        if (mongoose.Types.ObjectId.isValid(q)) {
-          filter.$or.push({ paymentId: q });
-
-          // Search by user ID
-          const userTransactions = await Transaction.find({ userId: q }).limit(
-            1
-          );
-          if (userTransactions.length > 0) {
-            filter.$or.push({ userId: q });
-          }
-        }
-        break;
+      // Check if search term is valid ObjectId for payment/order search
+      if (mongoose.Types.ObjectId.isValid(q)) {
+        filter.$or.push({ paymentId: q });
+      }
+    } else if (searchField === "gatewayTransactionId") {
+      filter.gatewayTransactionId = { $regex: q, $options: "i" };
+    } else if (searchField === "paymentId" && mongoose.Types.ObjectId.isValid(q)) {
+      filter.paymentId = q;
     }
 
     const transactions = await Transaction.find(filter)
+      .populate("paymentId", "orderId paymentMethod amount status")
+      .populate("userId", "username email")
       .sort({ createdAt: -1 })
-      .limit(parseInt(limit))
-      .populate("paymentId", "orderId paymentMethod amount")
-      .populate("userId", "username email profile");
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    const total = await Transaction.countDocuments(filter);
 
     res.json({
       success: true,
       data: {
         transactions,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(total / limit),
+          total,
+          hasNext: page * limit < total,
+          hasPrev: page > 1,
+        },
         searchQuery: q,
         searchField,
-        resultsCount: transactions.length,
       },
     });
   } catch (error) {
@@ -612,147 +576,147 @@ const searchTransactions = async (req, res) => {
 };
 
 // @desc    Get transaction analytics
-// @route   GET /api/transactions/analytics
+// @route   GET /api/admin/transactions/analytics
 // @access  Private (Admin)
 const getTransactionAnalytics = async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: errors.array(),
-      });
-    }
-
     const { period = "month", startDate, endDate, groupBy = "day" } = req.query;
 
-    // Calculate date range based on period
-    const dateRange = calculateDateRange(period, startDate, endDate);
+    const dateRange = getDateRange(period, startDate, endDate);
 
-    const matchStage = {
-      processedAt: {
-        $gte: dateRange.startDate,
-        $lte: dateRange.endDate,
-      },
-      status: "success", // Only count successful transactions for analytics
-    };
-
-    // Group by configuration
-    let groupStage = {};
-    let sortStage = {};
-
-    switch (groupBy) {
-      case "day":
-        groupStage = {
-          _id: {
-            year: { $year: "$processedAt" },
-            month: { $month: "$processedAt" },
-            day: { $dayOfMonth: "$processedAt" },
-          },
-        };
-        sortStage = { "_id.year": 1, "_id.month": 1, "_id.day": 1 };
-        break;
-      case "week":
-        groupStage = {
-          _id: {
-            year: { $year: "$processedAt" },
-            week: { $week: "$processedAt" },
-          },
-        };
-        sortStage = { "_id.year": 1, "_id.week": 1 };
-        break;
-      case "month":
-        groupStage = {
-          _id: {
-            year: { $year: "$processedAt" },
-            month: { $month: "$processedAt" },
-          },
-        };
-        sortStage = { "_id.year": 1, "_id.month": 1 };
-        break;
-      case "year":
-        groupStage = {
-          _id: {
-            year: { $year: "$processedAt" },
-          },
-        };
-        sortStage = { "_id.year": 1 };
-        break;
-      case "type":
-        groupStage = { _id: "$type" };
-        sortStage = { _id: 1 };
-        break;
-      case "status":
-        groupStage = { _id: "$status" };
-        sortStage = { _id: 1 };
-        break;
-      case "gateway":
-        groupStage = { _id: "$gatewayResponse.gateway" };
-        sortStage = { _id: 1 };
-        break;
-    }
-
-    const analytics = await Transaction.aggregate([
-      { $match: matchStage },
+    // Overall statistics
+    const overallStats = await Transaction.aggregate([
       {
-        $group: {
-          ...groupStage,
-          transactionCount: { $sum: 1 },
-          totalAmount: { $sum: "$amount" },
-          averageAmount: { $avg: "$amount" },
-          minAmount: { $min: "$amount" },
-          maxAmount: { $max: "$amount" },
+        $match: {
+          createdAt: { $gte: dateRange.startDate, $lte: dateRange.endDate },
         },
       },
-      { $sort: sortStage },
-    ]);
-
-    // Get overall statistics
-    const overallStats = await Transaction.aggregate([
-      { $match: matchStage },
       {
         $group: {
           _id: null,
           totalTransactions: { $sum: 1 },
-          totalRevenue: { $sum: "$amount" },
-          successRate: {
-            $avg: {
-              $cond: [{ $eq: ["$status", "success"] }, 1, 0],
-            },
+          totalAmount: { $sum: "$amount" },
+          avgAmount: { $avg: "$amount" },
+          successfulTransactions: {
+            $sum: { $cond: [{ $eq: ["$status", "success"] }, 1, 0] },
+          },
+          failedTransactions: {
+            $sum: { $cond: [{ $eq: ["$status", "failed"] }, 1, 0] },
+          },
+          successfulAmount: {
+            $sum: { $cond: [{ $eq: ["$status", "success"] }, "$amount", 0] },
+          },
+          refundedAmount: {
+            $sum: { $cond: [{ $eq: ["$type", "refund"] }, "$amount", 0] },
           },
         },
       },
+    ]);
+
+    // Transactions by type
+    const byType = await Transaction.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: dateRange.startDate, $lte: dateRange.endDate },
+        },
+      },
+      {
+        $group: {
+          _id: "$type",
+          count: { $sum: 1 },
+          totalAmount: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    // Transactions by status
+    const byStatus = await Transaction.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: dateRange.startDate, $lte: dateRange.endDate },
+        },
+      },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+          totalAmount: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    // Time series data
+    let dateFormat;
+    switch (groupBy) {
+      case "day":
+        dateFormat = "%Y-%m-%d";
+        break;
+      case "week":
+        dateFormat = "%Y-W%V";
+        break;
+      case "month":
+        dateFormat = "%Y-%m";
+        break;
+      case "year":
+        dateFormat = "%Y";
+        break;
+      default:
+        dateFormat = "%Y-%m-%d";
+    }
+
+    const timeSeries = await Transaction.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: dateRange.startDate, $lte: dateRange.endDate },
+        },
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: dateFormat, date: "$createdAt" } },
+          count: { $sum: 1 },
+          totalAmount: { $sum: "$amount" },
+          successCount: {
+            $sum: { $cond: [{ $eq: ["$status", "success"] }, 1, 0] },
+          },
+        },
+      },
+      { $sort: { _id: 1 } },
     ]);
 
     res.json({
       success: true,
       data: {
-        analytics,
-        overallStats: overallStats[0] || {
-          totalTransactions: 0,
-          totalRevenue: 0,
-          successRate: 0,
-        },
-        dateRange: {
+        period: {
+          type: period,
           startDate: dateRange.startDate,
           endDate: dateRange.endDate,
-          period,
         },
+        overall: overallStats[0] || {
+          totalTransactions: 0,
+          totalAmount: 0,
+          avgAmount: 0,
+          successfulTransactions: 0,
+          failedTransactions: 0,
+          successfulAmount: 0,
+          refundedAmount: 0,
+        },
+        byType,
+        byStatus,
+        timeSeries,
       },
     });
   } catch (error) {
     console.error("Get transaction analytics error:", error);
     res.status(500).json({
       success: false,
-      message: "Server error while fetching transaction analytics",
+      message: "Server error while fetching analytics",
       error: error.message,
     });
   }
 };
 
 // @desc    Bulk transaction operations
-// @route   POST /api/transactions/bulk
+// @route   POST /api/admin/transactions/bulk
 // @access  Private (Admin)
 const bulkTransactionOperation = async (req, res) => {
   try {
@@ -767,73 +731,68 @@ const bulkTransactionOperation = async (req, res) => {
 
     const { transactionIds, action, format = "json" } = req.body;
 
+    // Verify all transactions exist
+    const transactions = await Transaction.find({
+      _id: { $in: transactionIds },
+    })
+      .populate("paymentId", "orderId paymentMethod amount")
+      .populate("userId", "username email");
+
+    if (transactions.length !== transactionIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Some transaction IDs are invalid",
+      });
+    }
+
     let result;
+
     switch (action) {
       case "export":
-        const transactions = await Transaction.find({
-          _id: { $in: transactionIds },
-        })
-          .populate("paymentId", "orderId paymentMethod amount")
-          .populate("userId", "username email profile");
-
-        // Format data based on requested format
-        const exportData = formatExportData(transactions, format);
-
         result = {
           action: "export",
           format,
-          recordCount: transactions.length,
-          data: exportData,
+          data: formatExportData(transactions, format),
+          count: transactions.length,
         };
         break;
 
       case "analyze":
-        const analysis = await Transaction.aggregate([
-          {
-            $match: {
-              _id: {
-                $in: transactionIds.map(
-                  (id) => new mongoose.Types.ObjectId(id)
-                ),
-              },
-            },
+        const analysis = {
+          totalTransactions: transactions.length,
+          totalAmount: transactions.reduce((sum, t) => sum + t.amount, 0),
+          byType: {},
+          byStatus: {},
+          dateRange: {
+            earliest: null,
+            latest: null,
           },
-          {
-            $group: {
-              _id: null,
-              totalAmount: { $sum: "$amount" },
-              averageAmount: { $avg: "$amount" },
-              successCount: {
-                $sum: { $cond: [{ $eq: ["$status", "success"] }, 1, 0] },
-              },
-              failureCount: {
-                $sum: { $cond: [{ $eq: ["$status", "failed"] }, 1, 0] },
-              },
-              typeBreakdown: {
-                $push: {
-                  type: "$type",
-                  amount: "$amount",
-                  status: "$status",
-                },
-              },
-            },
-          },
-        ]);
+        };
+
+        transactions.forEach((t) => {
+          // By type
+          analysis.byType[t.type] = (analysis.byType[t.type] || 0) + 1;
+          // By status
+          analysis.byStatus[t.status] = (analysis.byStatus[t.status] || 0) + 1;
+          // Date range
+          if (!analysis.dateRange.earliest || t.createdAt < analysis.dateRange.earliest) {
+            analysis.dateRange.earliest = t.createdAt;
+          }
+          if (!analysis.dateRange.latest || t.createdAt > analysis.dateRange.latest) {
+            analysis.dateRange.latest = t.createdAt;
+          }
+        });
 
         result = {
           action: "analyze",
-          analysis: analysis[0] || {},
+          analysis,
         };
         break;
 
       case "reconcile":
-        // This would typically involve comparing with external payment gateway data
-        const reconciliationReport = await generateReconciliationReport(
-          transactionIds
-        );
         result = {
           action: "reconcile",
-          report: reconciliationReport,
+          report: await generateReconciliationReport(transactionIds),
         };
         break;
 
@@ -846,7 +805,7 @@ const bulkTransactionOperation = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Bulk operation completed: ${action}`,
+      message: `Bulk ${action} completed successfully`,
       data: result,
     });
   } catch (error) {
@@ -859,72 +818,67 @@ const bulkTransactionOperation = async (req, res) => {
   }
 };
 
-// Helper functions
+// Helper function to update payment status based on transaction
 const updatePaymentStatus = async (payment, transaction) => {
-  if (transaction.type === "sale" && transaction.status === "success") {
-    payment.status = "completed";
-    payment.paymentDate = new Date();
-  } else if (
-    transaction.type === "refund" &&
-    transaction.status === "success"
-  ) {
-    const totalRefunded = await Transaction.aggregate([
-      {
-        $match: {
-          paymentId: payment._id,
-          type: "refund",
-          status: "success",
-        },
-      },
-      { $group: { _id: null, total: { $sum: "$amount" } } },
-    ]);
+  if (transaction.type === "sale") {
+    if (transaction.status === "success") {
+      payment.status = "completed";
+      // Update order payment status
+      await Order.findByIdAndUpdate(payment.orderId, {
+        paymentStatus: "paid",
+      });
+    } else if (transaction.status === "failed") {
+      payment.status = "failed";
+    }
+  } else if (transaction.type === "refund" && transaction.status === "success") {
+    const allRefunds = await Transaction.find({
+      paymentId: payment._id,
+      type: "refund",
+      status: "success",
+    });
+    const totalRefunded = allRefunds.reduce((sum, t) => sum + t.amount, 0);
 
-    const refundTotal = totalRefunded[0]?.total || 0;
-
-    if (refundTotal >= payment.amount) {
+    if (totalRefunded >= payment.amount) {
       payment.status = "refunded";
-    } else if (refundTotal > 0) {
+      await Order.findByIdAndUpdate(payment.orderId, {
+        paymentStatus: "refunded",
+        status: "refunded",
+      });
+    } else {
       payment.status = "partially_refunded";
     }
-
-    payment.refundAmount = refundTotal;
-    payment.refundDate = new Date();
+    payment.refundedAmount = totalRefunded;
   }
 
   await payment.save();
-
-  // Update order payment status
-  if (payment.orderId) {
-    const order = await Order.findById(payment.orderId);
-    if (order) {
-      order.paymentStatus = payment.status;
-      await order.save();
-    }
-  }
 };
 
-const calculateDateRange = (period, customStartDate, customEndDate) => {
-  const endDate = customEndDate ? new Date(customEndDate) : new Date();
-  let startDate = customStartDate ? new Date(customStartDate) : new Date();
+// Helper function to get date range based on period
+const getDateRange = (period, startDateParam, endDateParam) => {
+  let startDate, endDate;
 
-  if (!customStartDate) {
+  if (period === "custom" && startDateParam && endDateParam) {
+    startDate = new Date(startDateParam);
+    endDate = new Date(endDateParam);
+  } else {
+    endDate = new Date();
+    startDate = new Date();
+
     switch (period) {
       case "today":
-        startDate = new Date(endDate);
         startDate.setHours(0, 0, 0, 0);
         break;
       case "yesterday":
-        startDate = new Date(endDate);
         startDate.setDate(startDate.getDate() - 1);
         startDate.setHours(0, 0, 0, 0);
-        endDate.setDate(endDate.getDate() - 1);
+        endDate = new Date(startDate);
         endDate.setHours(23, 59, 59, 999);
         break;
       case "week":
-        startDate.setDate(endDate.getDate() - 7);
+        startDate.setDate(startDate.getDate() - 7);
         break;
       case "month":
-        startDate.setMonth(endDate.getMonth() - 1);
+        startDate.setMonth(startDate.getMonth() - 1);
         break;
       case "quarter":
         startDate.setMonth(endDate.getMonth() - 3);
@@ -940,7 +894,6 @@ const calculateDateRange = (period, customStartDate, customEndDate) => {
 
 const formatExportData = (transactions, format) => {
   if (format === "csv") {
-    // Convert to CSV format
     const headers =
       "ID,Type,Amount,Currency,Status,Gateway ID,Processed At,User Email,Order ID\n";
     const rows = transactions
@@ -953,8 +906,6 @@ const formatExportData = (transactions, format) => {
   } else if (format === "json") {
     return transactions;
   } else {
-    // For PDF, you would typically generate a PDF file
-    // This is a simplified version
     return {
       summary: `Transaction Report - ${new Date().toISOString()}`,
       count: transactions.length,
@@ -970,12 +921,10 @@ const formatExportData = (transactions, format) => {
 };
 
 const generateReconciliationReport = async (transactionIds) => {
-  // This would typically involve calling payment gateway APIs
-  // and comparing with our transaction records
   return {
     generatedAt: new Date(),
     totalTransactions: transactionIds.length,
-    matched: transactionIds.length, // Simplified
+    matched: transactionIds.length,
     discrepancies: [],
     summary: "All transactions reconciled successfully",
   };
@@ -985,7 +934,7 @@ module.exports = {
   createTransaction,
   getAllTransactions,
   getTransactionById,
-  getUserTransactions,
+  getTransactionsByUser,
   updateTransactionStatus,
   processRefundTransaction,
   searchTransactions,

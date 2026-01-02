@@ -194,23 +194,6 @@ const validateProductQuery = [
     .withMessage("Featured must be a boolean value"),
 ];
 
-// Review validation
-const validateReview = [
-  param("productId").isMongoId().withMessage("Valid product ID is required"),
-
-  body("rating")
-    .notEmpty()
-    .withMessage("Rating is required")
-    .isInt({ min: 1, max: 5 })
-    .withMessage("Rating must be between 1 and 5"),
-
-  body("comment")
-    .optional()
-    .isLength({ min: 10, max: 1000 })
-    .withMessage("Comment must be between 10 and 1000 characters")
-    .trim(),
-];
-
 // Bulk operation validation
 const validateBulkOperation = [
   body("productIds")
@@ -251,7 +234,6 @@ module.exports = {
   validateUpdateProduct,
   validateProductId,
   validateProductQuery,
-  validateReview,
   validateBulkOperation,
   validateInventoryUpdate,
 };

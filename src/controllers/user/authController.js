@@ -19,7 +19,7 @@ const registerUser = async (req, res) => {
     }
 
     const { username, email, password, profile } = req.body;
-    
+
     // Support both flat and nested profile format
     const firstName = req.body.firstName || profile?.firstName;
     const lastName = req.body.lastName || profile?.lastName;
@@ -268,7 +268,7 @@ const forgotPassword = async (req, res) => {
     if (user.passwordReset?.lastRequestedAt) {
       const timeSinceLastRequest = Date.now() - new Date(user.passwordReset.lastRequestedAt).getTime();
       const cooldownPeriod = 5 * 60 * 1000; // 5 minutes
-      
+
       if (timeSinceLastRequest < cooldownPeriod) {
         const remainingTime = Math.ceil((cooldownPeriod - timeSinceLastRequest) / 1000 / 60);
         return res.status(429).json({
@@ -291,9 +291,9 @@ const forgotPassword = async (req, res) => {
     };
     await user.save();
 
-    // In production: Send email with reset link containing resetToken
-    // const resetUrl = `${process.env.CLIENT_URL}/reset-password?token=${resetToken}`;
-    // await sendEmail({ to: user.email, subject: 'Password Reset', html: `<a href="${resetUrl}">Reset Password</a>` });
+    // Send email with reset link containing resetToken
+    const { sendPasswordResetEmail } = require("../../services/emailService");
+    await sendPasswordResetEmail(user.email, resetToken);
 
     res.json({
       success: true,
@@ -351,7 +351,7 @@ const resetPassword = async (req, res) => {
     // Hash new password
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
-    
+
     // Clear reset token (single use)
     user.passwordReset = {
       token: undefined,
@@ -359,7 +359,7 @@ const resetPassword = async (req, res) => {
       lastRequestedAt: user.passwordReset.lastRequestedAt,
     };
     user.updatedAt = new Date();
-    
+
     await user.save();
 
     res.json({

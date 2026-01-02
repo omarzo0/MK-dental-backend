@@ -1,9 +1,8 @@
+// routes/admin/transactionRoutes.js
 const express = require("express");
 const router = express.Router();
-const { userAuth } = require("../../middleware/userAuth");
 const { adminAuth, requirePermission } = require("../../middleware/adminAuth");
 
-// Import validation middleware
 const {
   validateCreateTransaction,
   validateTransactionId,
@@ -13,98 +12,90 @@ const {
   validateBulkTransactionOperation,
   validateTransactionSearch,
   validateTransactionAnalytics,
-} = require("../../validations/shared/transactionValidation");
+} = require("../../validations/admin/transactionValidation");
 
-// Import controller
 const {
   createTransaction,
   getAllTransactions,
   getTransactionById,
-  getUserTransactions,
+  getTransactionsByUser,
   updateTransactionStatus,
   processRefundTransaction,
   searchTransactions,
   getTransactionAnalytics,
   bulkTransactionOperation,
-} = require("../../controllers/shared/transactionController");
+} = require("../../controllers/admin/transactionController");
 
-// User transaction routes
-router.get("/", userAuth, validateTransactionQuery, getUserTransactions);
+// All routes require admin authentication
+router.use(adminAuth);
+
+// Transaction listing and search
 router.get(
-  "/:transactionId",
-  userAuth,
-  validateTransactionId,
-  getTransactionById
-);
-
-// Admin transaction routes (require authentication and permissions)
-router.post(
   "/",
-  adminAuth,
-  requirePermission("canManagePayments"),
-  validateCreateTransaction,
-  createTransaction
-);
-router.get(
-  "/admin/transactions",
-  adminAuth,
   requirePermission("canManagePayments"),
   validateTransactionQuery,
   getAllTransactions
 );
+
 router.get(
-  "/admin/transactions/search",
-  adminAuth,
+  "/search",
   requirePermission("canManagePayments"),
   validateTransactionSearch,
   searchTransactions
 );
+
 router.get(
-  "/admin/transactions/analytics",
-  adminAuth,
+  "/analytics",
   requirePermission("canViewAnalytics"),
   validateTransactionAnalytics,
   getTransactionAnalytics
 );
+
+// Create transaction
+router.post(
+  "/",
+  requirePermission("canManagePayments"),
+  validateCreateTransaction,
+  createTransaction
+);
+
+// Bulk operations
+router.post(
+  "/bulk",
+  requirePermission("canManagePayments"),
+  validateBulkTransactionOperation,
+  bulkTransactionOperation
+);
+
+// Get transactions by user
 router.get(
-  "/admin/transactions/:transactionId",
-  adminAuth,
+  "/user/:userId",
+  requirePermission("canManagePayments"),
+  getTransactionsByUser
+);
+
+// Single transaction operations
+router.get(
+  "/:transactionId",
   requirePermission("canManagePayments"),
   validateTransactionId,
   getTransactionById
 );
+
 router.put(
-  "/admin/transactions/:transactionId/status",
-  adminAuth,
+  "/:transactionId/status",
   requirePermission("canManagePayments"),
   validateTransactionId,
   validateUpdateTransactionStatus,
   updateTransactionStatus
 );
+
 router.post(
-  "/admin/transactions/:transactionId/refund",
-  adminAuth,
+  "/:transactionId/refund",
   requirePermission("canManagePayments"),
   validateTransactionId,
   validateRefundTransaction,
   processRefundTransaction
-);
-
-// Admin user transactions route
-router.get(
-  "/admin/user/:userId",
-  adminAuth,
-  requirePermission("canManagePayments"),
-  getUserTransactions
-);
-
-// Bulk operations (admin only)
-router.post(
-  "/admin/transactions/bulk",
-  adminAuth,
-  requirePermission("canManagePayments"),
-  validateBulkTransactionOperation,
-  bulkTransactionOperation
 );
 
 module.exports = router;
