@@ -58,7 +58,7 @@ exports.getCategoryById = async (req, res) => {
       category: category.name, // Changed from categoryId to category.name
       status: "active"
     })
-      .select("name price images slug productType featured specifications")
+      .select("name price images slug productType featured specifications discount")
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .skip(skip);
@@ -68,9 +68,17 @@ exports.getCategoryById = async (req, res) => {
       status: "active"
     });
 
+    const { formatImageArray } = require('../../utils/imageHelper');
+
     const categoryData = {
       ...category.toObject(),
-      products: products,
+      products: products.map(p => ({
+        ...p.toObject(),
+        images: formatImageArray(req, p.images),
+        isOnSale: p.discount?.isActive && (!p.discount?.endDate || new Date(p.discount.endDate) > new Date()),
+        discountPercentage: p.discount?.type === 'percentage' ? p.discount.value : 0,
+        discountedPrice: p.discount?.discountedPrice || p.price
+      })),
       productsPagination: {
         currentPage: parseInt(page),
         totalPages: Math.ceil(totalProducts / limit),

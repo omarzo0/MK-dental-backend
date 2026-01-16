@@ -16,9 +16,10 @@ const adminSchema = new mongoose.Schema({
     phone: { type: String },
   },
   passwordReset: {
-    token: { type: String },
+    otp: { type: String }, // Hashed 6-digit OTP
     expiresAt: { type: Date },
     lastRequestedAt: { type: Date },
+    attempts: { type: Number, default: 0 }, // Track failed attempts
   },
   lastLogin: { type: Date, default: Date.now },
   isActive: { type: Boolean, default: true },

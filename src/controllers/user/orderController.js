@@ -1345,6 +1345,16 @@ const createGuestOrder = async (req, res) => {
     });
     await payment.save();
 
+    // Send order confirmation email to customer (non-blocking)
+    const { sendOrderConfirmationEmail, sendNewOrderAdminNotification } = require("../../services/emailService");
+    sendOrderConfirmationEmail(order).catch(err => console.error("Failed to send order confirmation email:", err));
+
+    // Send notification to admin about new order (non-blocking)
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (adminEmail) {
+      sendNewOrderAdminNotification(order, adminEmail).catch(err => console.error("Failed to send admin notification email:", err));
+    }
+
     const formattedOrder = {
       ...order.toObject(),
       items: order.items.map(item => ({

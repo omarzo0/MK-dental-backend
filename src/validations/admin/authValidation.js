@@ -98,11 +98,18 @@ const validateAdminForgotPassword = [
 ];
 
 const validateAdminResetPassword = [
-  body("token")
+  body("email")
+    .isEmail()
+    .normalizeEmail()
+    .withMessage("Please provide a valid email"),
+
+  body("otp")
     .notEmpty()
-    .withMessage("Reset token is required")
-    .isLength({ min: 64, max: 64 })
-    .withMessage("Invalid reset token format"),
+    .withMessage("OTP is required")
+    .isLength({ min: 6, max: 6 })
+    .withMessage("OTP must be 6 digits")
+    .isNumeric()
+    .withMessage("OTP must contain only numbers"),
 
   body("newPassword")
     .isLength({ min: 8 })

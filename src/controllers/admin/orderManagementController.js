@@ -283,7 +283,9 @@ const updateOrderStatus = async (req, res) => {
       await updatedOrder.save();
     }
 
-    // TODO: Send status update notification to customer
+    // Send status update notification to customer (non-blocking)
+    const { sendOrderStatusUpdateEmail } = require("../../services/emailService");
+    sendOrderStatusUpdateEmail(updatedOrder).catch(err => console.error("Failed to send status update email:", err));
 
     res.json({
       success: true,

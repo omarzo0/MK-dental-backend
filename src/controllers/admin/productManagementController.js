@@ -107,7 +107,7 @@ const getAllProducts = async (req, res) => {
     // Get total count for pagination
     const totalProducts = await Product.countDocuments(filter);
 
-    // Get product statistics with sales data
+    // Enhance products with stats and sales data
     const productsWithStats = await Promise.all(
       products.map(async (product) => {
         const salesData = await Order.aggregate([
@@ -134,7 +134,17 @@ const getAllProducts = async (req, res) => {
 
         return {
           ...product.toObject(),
+          isActive: product.status === "active",
+          originalPrice: product.comparePrice || product.price,
+          image: product.images?.[0] ? formatImageUrl(req, product.images[0]) : null,
           images: formatImageArray(req, product.images),
+          isOnSale: product.discount?.isActive && (!product.discount?.endDate || new Date(product.discount.endDate) > new Date()),
+          discountPercentage: product.discount?.type === 'percentage' ? product.discount.value : 0,
+          discountedPrice: product.discount?.discountedPrice || product.price,
+          items: (product.packageItems || []).map((item) => ({
+            ...item.toObject(),
+            image: formatImageUrl(req, item.image),
+          })),
           ...(product.productType === "package" &&
             product.packageItems && {
             packageItems: product.packageItems.map((item) => ({
@@ -202,14 +212,19 @@ const getAllProducts = async (req, res) => {
       { $sort: { count: -1 } },
     ]);
 
+    // Determine if we should return 'packages' or 'products' key
+    const isPackageType = productType === "package" || (req.originalUrl && req.originalUrl.includes("/packages"));
+    const dataKey = isPackageType ? "packages" : "products";
+
     res.json({
       success: true,
       data: {
-        products: productsWithStats,
+        [dataKey]: productsWithStats,
         pagination: {
           currentPage: parseInt(page),
           totalPages: Math.ceil(totalProducts / limit),
           totalProducts,
+          ...(isPackageType && { totalPackages: totalProducts }),
           hasNext: page * limit < totalProducts,
           hasPrev: page > 1,
         },
@@ -233,6 +248,7 @@ const getAllProducts = async (req, res) => {
           maxStock,
           dateFrom,
           dateTo,
+          productType
         },
       },
     });
@@ -363,9 +379,27 @@ const getProductById = async (req, res) => {
       data: {
         product: {
           ...product.toObject(),
+          isActive: product.status === "active",
+          originalPrice: product.comparePrice || product.price,
+          image: product.images?.[0] ? formatImageUrl(req, product.images[0]) : null,
           images: formatImageArray(req, product.images),
+          isOnSale: product.discount?.isActive && (!product.discount?.endDate || new Date(product.discount.endDate) > new Date()),
+          discountPercentage: product.discount?.type === 'percentage' ? product.discount.value : 0,
+          discountedPrice: product.discount?.discountedPrice || product.price,
           ...(product.productType === "package" &&
             product.packageItems && {
+            items: product.packageItems.map((item) => ({
+              ...item.toObject(),
+              image: formatImageUrl(req, item.image),
+              productId: item.productId
+                ? {
+                  ...item.productId.toObject(),
+                  images: formatImageArray(req, item.productId.images),
+                  isOnSale: item.productId.discount?.isActive,
+                  discountedPrice: item.productId.discount?.discountedPrice || item.productId.price
+                }
+                : null,
+            })),
             packageItems: product.packageItems.map((item) => ({
               ...item.toObject(),
               image: formatImageUrl(req, item.image),
@@ -373,6 +407,8 @@ const getProductById = async (req, res) => {
                 ? {
                   ...item.productId.toObject(),
                   images: formatImageArray(req, item.productId.images),
+                  isOnSale: item.productId.discount?.isActive,
+                  discountedPrice: item.productId.discount?.discountedPrice || item.productId.price
                 }
                 : null,
             })),
@@ -547,23 +583,38 @@ const createProduct = async (req, res) => {
       createdBy: req.admin.adminId,
     });
 
+    // Handle discount if provided
+    if (discount) {
+      product.discount = {
+        type: discount.type || "percentage",
+        value: discount.value || 0,
+        discountedPrice: discount.discountedPrice || (discount.type === "percentage"
+          ? price - (price * (discount.value || 0) / 100)
+          : price - (discount.value || 0)),
+        startDate: discount.startDate ? new Date(discount.startDate) : undefined,
+        endDate: discount.endDate ? new Date(discount.endDate) : undefined,
+        isActive: discount.isActive !== undefined ? discount.isActive : true,
+      };
+    }
+
+    // Calculate package details if it's a package - RUN THIS BEFORE IMAGE HANDLING
+    // so that item images are populated for the package fallback
+    if (productType === "package") {
+      await product.calculatePackageDetails();
+    }
+
     // Handle images: Support both 'image' and 'images' fields
     let processedImages = stripImageArray(images || image);
 
     // If it's a package and no images provided, default to first package item's image
-    if (productType === "package" && processedImages.length === 0 && finalPackageItems.length > 0) {
-      const firstItemImage = finalPackageItems[0].image;
+    if (productType === "package" && processedImages.length === 0 && product.packageItems?.length > 0) {
+      const firstItemImage = product.packageItems[0].image;
       if (firstItemImage) {
         processedImages = [firstItemImage];
       }
     }
 
     product.images = processedImages;
-
-    // Calculate package details if it's a package
-    if (productType === "package") {
-      await product.calculatePackageDetails();
-    }
 
     await product.save();
 
@@ -575,9 +626,16 @@ const createProduct = async (req, res) => {
       data: {
         product: {
           ...product.toObject(),
+          isActive: product.status === "active",
+          originalPrice: product.comparePrice || product.price,
+          image: product.images?.[0] ? formatImageUrl(req, product.images[0]) : null,
           images: formatImageArray(req, product.images),
           ...(product.productType === "package" &&
             product.packageItems && {
+            items: product.packageItems.map((item) => ({
+              ...item.toObject(),
+              image: formatImageUrl(req, item.image),
+            })),
             packageItems: product.packageItems.map((item) => ({
               ...item.toObject(),
               image: formatImageUrl(req, item.image),
@@ -642,6 +700,22 @@ const updateProduct = async (req, res) => {
           };
         } else if (key === "seo" && typeof updateData[key] === "object") {
           product.seo = { ...product.seo, ...updateData[key] };
+        } else if (key === "discount" && typeof updateData[key] === "object") {
+          // Handle discount updates
+          const discountData = updateData[key];
+          const currentPrice = updateData.price || product.price;
+          product.discount = {
+            type: discountData.type || product.discount?.type || "percentage",
+            value: discountData.value !== undefined ? discountData.value : (product.discount?.value || 0),
+            discountedPrice: discountData.discountedPrice || (
+              (discountData.type || product.discount?.type) === "percentage"
+                ? currentPrice - (currentPrice * (discountData.value !== undefined ? discountData.value : product.discount?.value || 0) / 100)
+                : currentPrice - (discountData.value !== undefined ? discountData.value : product.discount?.value || 0)
+            ),
+            startDate: discountData.startDate ? new Date(discountData.startDate) : product.discount?.startDate,
+            endDate: discountData.endDate ? new Date(discountData.endDate) : product.discount?.endDate,
+            isActive: discountData.isActive !== undefined ? discountData.isActive : (product.discount?.isActive ?? true),
+          };
         } else if (key === "packageItems" && Array.isArray(updateData[key])) {
           product.packageItems = updateData[key].map(item => ({
             ...item,
@@ -726,9 +800,16 @@ const updateProduct = async (req, res) => {
       data: {
         product: {
           ...product.toObject(),
+          isActive: product.status === "active",
+          originalPrice: product.comparePrice || product.price,
+          image: product.images?.[0] ? formatImageUrl(req, product.images[0]) : null,
           images: formatImageArray(req, product.images),
           ...(product.productType === "package" &&
             product.packageItems && {
+            items: product.packageItems.map((item) => ({
+              ...item.toObject(),
+              image: formatImageUrl(req, item.image),
+            })),
             packageItems: product.packageItems.map((item) => ({
               ...item.toObject(),
               image: formatImageUrl(req, item.image),
@@ -1199,8 +1280,160 @@ const calculateRestockUrgency = (currentStock, lowStockAlert) => {
   return 25;
 };
 
+const getAllPackages = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      category,
+      status,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+    } = req.query;
+
+    const filter = { productType: "package" };
+
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } },
+        { tags: { $in: [new RegExp(search, "i")] } },
+      ];
+    }
+
+    if (category) {
+      filter.category = { $regex: category, $options: "i" };
+    }
+
+    if (status) {
+      filter.status = status;
+    }
+
+    const sortConfig = {};
+    sortConfig[sortBy] = sortOrder === "asc" ? 1 : -1;
+
+    const products = await Product.find(filter)
+      .sort(sortConfig)
+      .limit(limit * 1)
+      .skip((page - 1) * limit)
+      .select("-__v");
+
+    const totalPackages = await Product.countDocuments(filter);
+
+    const productsWithStats = await Promise.all(
+      products.map(async (product) => {
+        const salesData = await Order.aggregate([
+          {
+            $match: {
+              "items.productId": product._id,
+              paymentStatus: "paid",
+            },
+          },
+          { $unwind: "$items" },
+          {
+            $match: {
+              "items.productId": product._id,
+            },
+          },
+          {
+            $group: {
+              _id: "$items.productId",
+              totalSold: { $sum: "$items.quantity" },
+              totalRevenue: { $sum: "$items.subtotal" },
+            },
+          },
+        ]);
+
+        return {
+          ...product.toObject(),
+          isActive: product.status === "active",
+          originalPrice: product.comparePrice || product.price,
+          image: product.images?.[0] ? formatImageUrl(req, product.images[0]) : null,
+          isOnSale: product.discount?.isActive && (!product.discount?.endDate || new Date(product.discount.endDate) > new Date()),
+          discountPercentage: product.discount?.type === 'percentage' ? product.discount.value : 0,
+          discountedPrice: product.discount?.discountedPrice || product.price,
+          items: (product.packageItems || []).map(item => ({
+            ...item.toObject(),
+            image: formatImageUrl(req, item.image)
+          })),
+          sales: salesData[0] || { totalSold: 0, totalRevenue: 0 },
+        };
+      })
+    );
+
+    const productStats = await Product.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: null,
+          totalProducts: { $sum: 1 },
+          activeProducts: { $sum: { $cond: [{ $eq: ["$status", "active"] }, 1, 0] } },
+          outOfStockProducts: { $sum: { $cond: [{ $eq: ["$inventory.quantity", 0] }, 1, 0] } },
+          lowStockProducts: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $gt: ["$inventory.quantity", 0] },
+                    { $lte: ["$inventory.quantity", "$inventory.lowStockAlert"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          totalValue: { $sum: { $multiply: ["$price", "$inventory.quantity"] } },
+          averagePrice: { $avg: "$price" },
+        },
+      },
+    ]);
+
+    const categoryStats = await Product.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: "$category",
+          count: { $sum: 1 },
+          totalValue: { $sum: { $multiply: ["$price", "$inventory.quantity"] } },
+        },
+      },
+      { $sort: { count: -1 } },
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        packages: productsWithStats,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(totalPackages / limit),
+          totalPackages,
+          totalProducts: totalPackages,
+          hasNext: page * limit < totalPackages,
+          hasPrev: page > 1,
+        },
+        statistics: productStats[0] || {
+          totalProducts: 0,
+          activeProducts: 0,
+          outOfStockProducts: 0,
+          lowStockProducts: 0,
+          totalValue: 0,
+          averagePrice: 0,
+        },
+        categories: categoryStats,
+      },
+    });
+  } catch (error) {
+    console.error("Admin get all packages error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 module.exports = {
   getAllProducts,
+  getAllPackages,
   getProductById,
   createProduct,
   updateProduct,

@@ -2,18 +2,21 @@ const express = require("express");
 const router = express.Router();
 
 const {
-    getPackages,
-    getPackageById,
+    getAllProducts,
+    getProductById,
 } = require("../../controllers/shared/productController");
 
 // @route   GET /api/user/packages
 // @desc    Get all packages
 // @access  Public
-router.get("/", getPackages);
+router.get("/", (req, res, next) => {
+    req.query.productType = "package";
+    next();
+}, getAllProducts);
 
-// @route   GET /api/user/packages/:packageId
+// @route   GET /api/user/packages/:productId
 // @desc    Get package by ID
 // @access  Public
-router.get("/:packageId", getPackageById);
+router.get("/:productId", getProductById);
 
 module.exports = router;

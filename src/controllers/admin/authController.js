@@ -289,7 +289,7 @@ const refreshToken = async (req, res) => {
   }
 };
 
-// @desc    Forgot password - send reset email
+// @desc    Forgot password - send OTP email
 // @route   POST /api/admin/auth/forgot-password
 // @access  Public
 const forgotPassword = async (req, res) => {
@@ -310,7 +310,7 @@ const forgotPassword = async (req, res) => {
       // Don't reveal if admin exists or not (security)
       return res.json({
         success: true,
-        message: "If an account with that email exists, a reset link has been sent",
+        message: "If an account with that email exists, an OTP has been sent",
       });
     }
 
@@ -318,50 +318,52 @@ const forgotPassword = async (req, res) => {
     if (!admin.isActive) {
       return res.json({
         success: true,
-        message: "If an account with that email exists, a reset link has been sent",
+        message: "If an account with that email exists, an OTP has been sent",
       });
     }
 
-    // Rate limiting: Check if reset was requested recently (5 min cooldown)
+    // Rate limiting: Check if reset was requested recently (2 min cooldown)
     if (admin.passwordReset?.lastRequestedAt) {
       const timeSinceLastRequest = Date.now() - new Date(admin.passwordReset.lastRequestedAt).getTime();
       const cooldownPeriod = 2 * 60 * 1000; // 2 minutes
 
       if (timeSinceLastRequest < cooldownPeriod) {
-        const remainingTime = Math.ceil((cooldownPeriod - timeSinceLastRequest) / 1000 / 60);
+        const remainingTime = Math.ceil((cooldownPeriod - timeSinceLastRequest) / 1000);
         return res.status(429).json({
           success: false,
-          message: `Please wait ${remainingTime} minute(s) before requesting another reset`,
+          message: `Please wait ${remainingTime} seconds before requesting another OTP`,
         });
       }
     }
 
-    // Generate secure reset token
-    const resetToken = crypto.randomBytes(32).toString("hex");
-    const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
 
-    // Save hashed token to admin
+    // Save hashed OTP to admin with 10 minute expiry
     admin.passwordReset = {
-      token: hashedToken,
-      expiresAt: new Date(Date.now() + 60 * 60 * 1000), // 1 hour
+      otp: hashedOtp,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
       lastRequestedAt: new Date(),
+      attempts: 0,
     };
     await admin.save();
 
-    // Send email with reset link
+    // Send email with OTP
+    const { sendAdminOtpEmail } = require("../../services/emailService");
     const adminName = admin.profile?.firstName || admin.username;
-    const emailResult = await sendAdminPasswordResetEmail(email, resetToken, adminName);
+    const emailResult = await sendAdminOtpEmail(email, otp, adminName);
 
     if (!emailResult) {
       return res.status(500).json({
         success: false,
-        message: "Failed to send reset email. Please try again later.",
+        message: "Failed to send OTP email. Please try again later.",
       });
     }
 
     res.json({
       success: true,
-      message: "If an account with that email exists, a reset link has been sent",
+      message: "If an account with that email exists, an OTP has been sent",
     });
   } catch (error) {
     console.error("Admin forgot password error:", error);
@@ -373,7 +375,7 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-// @desc    Reset password with token
+// @desc    Reset password with OTP
 // @route   POST /api/admin/auth/reset-password
 // @access  Public
 const resetPassword = async (req, res) => {
@@ -387,21 +389,55 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    const { token, newPassword } = req.body;
+    const { email, otp, newPassword } = req.body;
 
-    // Hash the provided token to compare with stored hash
-    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+    // Hash the provided OTP to compare with stored hash
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
 
-    // Find admin with valid reset token
-    const admin = await Admin.findOne({
-      "passwordReset.token": hashedToken,
-      "passwordReset.expiresAt": { $gt: new Date() },
-    });
+    // Find admin with email
+    const admin = await Admin.findOne({ email });
 
     if (!admin) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or expired reset token",
+        message: "Invalid email or OTP",
+      });
+    }
+
+    // Check if OTP matches and is not expired
+    if (!admin.passwordReset?.otp || admin.passwordReset.otp !== hashedOtp) {
+      // Increment attempts
+      if (admin.passwordReset) {
+        admin.passwordReset.attempts = (admin.passwordReset.attempts || 0) + 1;
+
+        // Lock out after 5 failed attempts
+        if (admin.passwordReset.attempts >= 5) {
+          admin.passwordReset = {
+            otp: undefined,
+            expiresAt: undefined,
+            lastRequestedAt: admin.passwordReset.lastRequestedAt,
+            attempts: 0,
+          };
+          await admin.save();
+          return res.status(400).json({
+            success: false,
+            message: "Too many failed attempts. Please request a new OTP.",
+          });
+        }
+        await admin.save();
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // Check if OTP is expired
+    if (new Date() > new Date(admin.passwordReset.expiresAt)) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired. Please request a new one.",
       });
     }
 
@@ -409,11 +445,12 @@ const resetPassword = async (req, res) => {
     const salt = await bcrypt.genSalt(12);
     admin.password = await bcrypt.hash(newPassword, salt);
 
-    // Clear reset token (single use)
+    // Clear reset OTP (single use)
     admin.passwordReset = {
-      token: undefined,
+      otp: undefined,
       expiresAt: undefined,
       lastRequestedAt: admin.passwordReset.lastRequestedAt,
+      attempts: 0,
     };
     admin.updatedAt = new Date();
 

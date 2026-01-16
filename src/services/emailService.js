@@ -101,9 +101,65 @@ const sendAdminPasswordResetEmail = async (email, resetToken, adminName) => {
     });
 };
 
+const sendAdminOtpEmail = async (email, otp, adminName) => {
+    const message = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: #2563eb; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+            .content { background-color: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+            .otp-box { background-color: #ffffff; border: 2px dashed #2563eb; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px; }
+            .otp-code { font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #2563eb; margin: 10px 0; }
+            .footer { margin-top: 20px; font-size: 12px; color: #6b7280; text-align: center; }
+            .warning { background-color: #fef3c7; border: 1px solid #f59e0b; padding: 12px; border-radius: 6px; margin-top: 20px; }
+            .timer { color: #ef4444; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>🔐 MK Dental Admin</h1>
+            </div>
+            <div class="content">
+                <h2>Password Reset OTP</h2>
+                <p>Hello ${adminName || "Admin"},</p>
+                <p>You have requested to reset your password. Use the following OTP code to proceed:</p>
+                
+                <div class="otp-box">
+                    <p style="margin: 0; color: #6b7280;">Your verification code is:</p>
+                    <p class="otp-code">${otp}</p>
+                </div>
+                
+                <p class="timer">⏱️ This code expires in 10 minutes.</p>
+                
+                <div class="warning">
+                    <strong>⚠️ Security Notice:</strong>
+                    <p style="margin: 5px 0 0 0;">If you did not request this password reset, please ignore this email or contact support immediately. Never share this code with anyone.</p>
+                </div>
+            </div>
+            <div class="footer">
+                <p>© ${new Date().getFullYear()} MK Dental. All rights reserved.</p>
+                <p>This is an automated message, please do not reply.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+
+    return sendEmail({
+        to: email,
+        subject: `🔐 Your MK Dental Admin Password Reset Code: ${otp}`,
+        html: message,
+    });
+};
+
+
 const sendOrderConfirmationEmail = async (order) => {
     const orderUrl = `${process.env.CLIENT_URL || "http://localhost:3000"}/orders/${order._id}`;
-    
+
     const itemsHtml = order.items
         .map(
             (item) => `
@@ -186,10 +242,6 @@ const sendOrderConfirmationEmail = async (order) => {
                         <span>Shipping:</span>
                         <span>${order.totals.shipping.toFixed(2)} EGP</span>
                     </div>
-                    <div class="totals-row">
-                        <span>Tax:</span>
-                        <span>${order.totals.tax.toFixed(2)} EGP</span>
-                    </div>
                     ${order.totals.discount > 0 ? `
                     <div class="totals-row" style="color: #059669;">
                         <span>Discount:</span>
@@ -236,7 +288,7 @@ const sendOrderConfirmationEmail = async (order) => {
 
 const sendNewOrderAdminNotification = async (order, adminEmail) => {
     const adminOrderUrl = `${process.env.ADMIN_URL || "http://localhost:3000/admin"}/orders/${order._id}`;
-    
+
     const itemsHtml = order.items
         .map(
             (item) => `
@@ -349,26 +401,97 @@ const sendNewOrderAdminNotification = async (order, adminEmail) => {
 };
 
 const sendOrderStatusUpdateEmail = async (order) => {
+    const orderUrl = `${process.env.CLIENT_URL || "http://localhost:3000"}/orders/${order._id}`;
+
+    // Status-specific messaging and colors
+    const statusConfig = {
+        pending: { color: "#f59e0b", icon: "⏳", title: "Order Pending", message: "Your order is waiting to be processed." },
+        processing: { color: "#3b82f6", icon: "⚙️", title: "Order Processing", message: "We're preparing your order for shipment." },
+        confirmed: { color: "#10b981", icon: "✓", title: "Order Confirmed", message: "Your order has been confirmed and will be shipped soon." },
+        shipped: { color: "#8b5cf6", icon: "📦", title: "Order Shipped", message: "Your order is on its way!" },
+        delivered: { color: "#059669", icon: "🎉", title: "Order Delivered", message: "Your order has been delivered successfully." },
+        completed: { color: "#059669", icon: "✅", title: "Order Completed", message: "Thank you for shopping with us!" },
+        cancelled: { color: "#ef4444", icon: "❌", title: "Order Cancelled", message: "Your order has been cancelled." },
+        returned: { color: "#6b7280", icon: "↩️", title: "Order Returned", message: "Your return has been processed." },
+    };
+
+    const config = statusConfig[order.status] || statusConfig.pending;
+
     const message = `
-    <h1>Order Update</h1>
-    <p>Your order status has been updated.</p>
-    <h2>Order #${order.orderNumber}</h2>
-    <p><strong>New Status:</strong> ${order.status.toUpperCase()}</p>
-    ${order.trackingNumber ? `<p><strong>Tracking Number:</strong> ${order.trackingNumber}</p>` : ""}
-    <p>You can track your order status on our website.</p>
-  `;
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background-color: ${config.color}; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+            .header h1 { margin: 0; font-size: 24px; }
+            .status-icon { font-size: 48px; margin-bottom: 10px; }
+            .content { background-color: #ffffff; padding: 30px; border: 1px solid #e5e7eb; }
+            .order-info { background-color: #f9fafb; padding: 20px; border-radius: 8px; margin: 20px 0; }
+            .order-number { font-size: 18px; font-weight: bold; color: ${config.color}; }
+            .status-badge { display: inline-block; background-color: ${config.color}; color: white; padding: 8px 16px; border-radius: 20px; font-weight: 600; margin: 10px 0; }
+            .tracking-box { background-color: #eff6ff; border: 1px solid #3b82f6; padding: 15px; border-radius: 8px; margin: 20px 0; }
+            .button { display: inline-block; background-color: ${config.color}; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+            .footer { background-color: #f9fafb; padding: 20px; text-align: center; font-size: 12px; color: #6b7280; border-radius: 0 0 8px 8px; border: 1px solid #e5e7eb; border-top: none; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="status-icon">${config.icon}</div>
+                <h1>${config.title}</h1>
+                <p style="margin: 10px 0 0 0; opacity: 0.9;">${config.message}</p>
+            </div>
+            <div class="content">
+                <div class="order-info">
+                    <p style="margin: 0;">Order Number:</p>
+                    <p class="order-number">#${order.orderNumber}</p>
+                    <p style="margin: 10px 0 0 0;">
+                        <span class="status-badge">${order.status.toUpperCase()}</span>
+                    </p>
+                </div>
+                
+                <p>Hi ${order.customer.firstName},</p>
+                <p>${config.message}</p>
+                
+                ${order.trackingNumber ? `
+                <div class="tracking-box">
+                    <h4 style="margin: 0 0 10px 0; color: #3b82f6;">📍 Tracking Information</h4>
+                    <p style="margin: 0;"><strong>Tracking Number:</strong> ${order.trackingNumber}</p>
+                </div>
+                ` : ''}
+                
+                <p style="text-align: center; margin-top: 30px;">
+                    <a href="${orderUrl}" class="button" style="color: white;">View Order Details</a>
+                </p>
+                
+                <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
+                    If you have any questions about your order, please contact our support team.
+                </p>
+            </div>
+            <div class="footer">
+                <p>© ${new Date().getFullYear()} MK Dental. All rights reserved.</p>
+                <p>This is an automated message, please do not reply directly to this email.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
 
     return sendEmail({
         to: order.customer.email,
-        subject: `Order Update #${order.orderNumber}`,
+        subject: `${config.icon} ${config.title} - Order #${order.orderNumber}`,
         html: message,
     });
 };
+
 
 module.exports = {
     sendEmail,
     sendPasswordResetEmail,
     sendAdminPasswordResetEmail,
+    sendAdminOtpEmail,
     sendOrderConfirmationEmail,
     sendNewOrderAdminNotification,
     sendOrderStatusUpdateEmail,

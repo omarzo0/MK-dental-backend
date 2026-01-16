@@ -6,6 +6,7 @@ const {
 
 const {
   getAllProducts,
+  getAllPackages,
   getProductById,
   createProduct,
   updateProduct,
@@ -34,6 +35,11 @@ router.get(
   "/",
   validateGetProducts,
   getAllProducts
+);
+router.get(
+  "/packages",
+  validateGetProducts,
+  getAllPackages
 );
 router.get(
   "/alerts/low-stock",

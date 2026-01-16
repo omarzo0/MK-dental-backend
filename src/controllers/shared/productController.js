@@ -3,86 +3,7 @@ const Category = require("../../models/Category");
 const { validationResult } = require("express-validator");
 const { formatImageArray, formatImageUrl } = require("../../utils/imageHelper");
 
-// @desc    Get all packages
-// @route   GET /api/products/packages
-// @access  Public
-async function getAllPackages(req, res) {
-  try {
-    const packages = await Product.find({
-      productType: "package",
-      status: "active",
-    }).populate({
-      path: "packageItems.productId",
-      select: "name price images inventory status",
-    });
-
-    res.json({
-      success: true,
-      data: packages.map((p) => ({
-        ...p.toObject(),
-        images: formatImageArray(req, p.images),
-        packageItems: p.packageItems.map((item) => ({
-          ...item.toObject(),
-          image: formatImageUrl(req, item.image),
-          productId: item.productId
-            ? {
-              ...item.productId.toObject(),
-              images: formatImageArray(req, item.productId.images),
-            }
-            : null,
-        })),
-      })),
-    });
-  } catch (err) {
-    console.error("Get all packages error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-}
-
-// @desc    Get package by ID
-// @route   GET /api/products/packages/:packageId
-// @access  Public
-async function getPackageById(req, res) {
-  try {
-    const { packageId } = req.params;
-    const packageDoc = await Product.findOne({
-      _id: packageId,
-      productType: "package",
-      status: "active",
-    }).populate({
-      path: "packageItems.productId",
-      select: "name price images inventory status",
-    });
-
-    if (!packageDoc) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Package not found" });
-    }
-    res.json({
-      success: true,
-      data: {
-        ...packageDoc.toObject(),
-        images: formatImageArray(req, packageDoc.images),
-        packageItems: packageDoc.packageItems.map((item) => ({
-          ...item.toObject(),
-          image: formatImageUrl(req, item.image),
-          productId: item.productId
-            ? {
-              ...item.productId.toObject(),
-              images: formatImageArray(req, item.productId.images),
-            }
-            : null,
-        })),
-      },
-    });
-  } catch (err) {
-    console.error("Get package by ID error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-}
-
-async function getAllCategories(req, res) {
+const getAllCategories = async (req, res) => {
   try {
     const categories = await Category.find({ isActive: true });
 
@@ -99,7 +20,7 @@ async function getAllCategories(req, res) {
 // @desc    Get category by ID
 // @route   GET /api/products/categories/:categoryId
 // @access  Public
-async function getCategoryById(req, res) {
+const getCategoryById = async (req, res) => {
   try {
     const { categoryId } = req.params;
     const { page = 1, limit = 12 } = req.query;
@@ -117,7 +38,7 @@ async function getCategoryById(req, res) {
       category: categoryId,
       status: "active"
     })
-      .select("name price images slug productType featured specifications")
+      .select("name price images slug productType featured specifications discount")
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .skip(skip);
@@ -132,7 +53,10 @@ async function getCategoryById(req, res) {
       image: category.image ? { ...category.image, url: formatImageUrl(req, category.image.url) } : null,
       products: products.map(p => ({
         ...p.toObject(),
-        images: formatImageArray(req, p.images)
+        images: formatImageArray(req, p.images),
+        isOnSale: p.discount?.isActive && (!p.discount?.endDate || new Date(p.discount.endDate) > new Date()),
+        discountPercentage: p.discount?.type === 'percentage' ? p.discount.value : 0,
+        discountedPrice: p.discount?.discountedPrice || p.price
       })),
       productsPagination: {
         currentPage: parseInt(page),
@@ -229,36 +153,133 @@ const getAllProducts = async (req, res) => {
     // Get total count for pagination
     const totalProducts = await Product.countDocuments(filter);
 
-    // Get aggregation data for filters
-    const categories = await Product.distinct("category", filter);
-    const priceRange = await Product.aggregate([
+    const Order = require("../../models/Order");
+
+    // Enhance products with stats and sales data
+    const productsWithStats = await Promise.all(
+      products.map(async (p) => {
+        const salesData = await Order.aggregate([
+          {
+            $match: {
+              "items.productId": p._id,
+              paymentStatus: "paid",
+            },
+          },
+          { $unwind: "$items" },
+          {
+            $match: {
+              "items.productId": p._id,
+            },
+          },
+          {
+            $group: {
+              _id: "$items.productId",
+              totalSold: { $sum: "$items.quantity" },
+              totalRevenue: { $sum: "$items.subtotal" },
+            },
+          },
+        ]);
+
+        return {
+          ...p.toObject(),
+          isActive: p.status === "active",
+          originalPrice: p.comparePrice || p.price,
+          image: p.images?.[0] ? formatImageUrl(req, p.images[0]) : null,
+          images: formatImageArray(req, p.images),
+          isOnSale: p.discount?.isActive && (!p.discount?.endDate || new Date(p.discount.endDate) > new Date()),
+          discountPercentage: p.discount?.type === 'percentage' ? p.discount.value : 0,
+          discountedPrice: p.discount?.discountedPrice || p.price,
+          items: p.packageItems.map((item) => ({
+            ...item.toObject(),
+            image: formatImageUrl(req, item.image),
+          })),
+          packageItems: p.packageItems.map((item) => ({
+            ...item.toObject(),
+            image: formatImageUrl(req, item.image),
+          })),
+          sales: salesData[0] || {
+            totalSold: 0,
+            totalRevenue: 0,
+          },
+        };
+      })
+    );
+
+    // Get overall product statistics
+    const productStats = await Product.aggregate([
       { $match: filter },
       {
         $group: {
           _id: null,
-          minPrice: { $min: "$price" },
-          maxPrice: { $max: "$price" },
+          totalProducts: { $sum: 1 },
+          activeProducts: { $sum: { $cond: [{ $eq: ["$status", "active"] }, 1, 0] } },
+          outOfStockProducts: { $sum: { $cond: [{ $eq: ["$inventory.quantity", 0] }, 1, 0] } },
+          lowStockProducts: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $gt: ["$inventory.quantity", 0] },
+                    { $lte: ["$inventory.quantity", "$inventory.lowStockAlert"] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          totalValue: { $sum: { $multiply: ["$price", "$inventory.quantity"] } },
+          averagePrice: { $avg: "$price" },
         },
       },
     ]);
 
+    // Get category distribution with counts and values
+    const categoryStats = await Product.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: "$category",
+          count: { $sum: 1 },
+          totalValue: { $sum: { $multiply: ["$price", "$inventory.quantity"] } },
+        },
+      },
+      { $sort: { count: -1 } },
+    ]);
+
+    // Determine if we should return 'packages' or 'products' key
+    const isPackageType = productType === "package" || (req.originalUrl && req.originalUrl.includes("/packages"));
+    const dataKey = isPackageType ? "packages" : "products";
+
     res.json({
       success: true,
       data: {
-        products: products.map(p => ({
-          ...p.toObject(),
-          images: formatImageArray(req, p.images)
-        })),
+        [dataKey]: productsWithStats,
         pagination: {
           currentPage: parseInt(page),
           totalPages: Math.ceil(totalProducts / limit),
           totalProducts,
+          ...(isPackageType && { totalPackages: totalProducts }),
           hasNext: page * limit < totalProducts,
           hasPrev: page > 1,
         },
+        statistics: productStats[0] || {
+          totalProducts: 0,
+          activeProducts: 0,
+          outOfStockProducts: 0,
+          lowStockProducts: 0,
+          totalValue: 0,
+          averagePrice: 0,
+        },
+        categories: categoryStats,
         filters: {
-          categories,
-          priceRange: priceRange[0] || { minPrice: 0, maxPrice: 0 },
+          search,
+          category,
+          status,
+          featured,
+          minPrice,
+          maxPrice,
+          productType
         },
       },
     });
@@ -308,7 +329,7 @@ const getProductById = async (req, res) => {
     if (product.productType === "package") {
       product = await Product.findById(productId).populate({
         path: "packageItems.productId",
-        select: "name price images inventory status seo.slug",
+        select: "name price images inventory status seo.slug discount",
       });
     }
 
@@ -319,16 +340,34 @@ const getProductById = async (req, res) => {
       _id: { $ne: productId },
     })
       .limit(4)
-      .select("name price images slug productType packageDetails");
+      .select("name price images slug productType packageDetails discount");
 
     res.json({
       success: true,
       data: {
         product: {
           ...product.toObject(),
+          isActive: product.status === "active",
+          originalPrice: product.comparePrice || product.price,
+          image: product.images?.[0] ? formatImageUrl(req, product.images[0]) : null,
           images: formatImageArray(req, product.images),
+          isOnSale: product.discount?.isActive && (!product.discount?.endDate || new Date(product.discount.endDate) > new Date()),
+          discountPercentage: product.discount?.type === 'percentage' ? product.discount.value : 0,
+          discountedPrice: product.discount?.discountedPrice || product.price,
           ...(product.productType === "package" &&
             product.packageItems && {
+            items: product.packageItems.map((item) => ({
+              ...item.toObject(),
+              image: formatImageUrl(req, item.image),
+              productId: item.productId
+                ? {
+                  ...item.productId.toObject(),
+                  images: formatImageArray(req, item.productId.images),
+                  isOnSale: item.productId.discount?.isActive,
+                  discountedPrice: item.productId.discount?.discountedPrice || item.productId.price
+                }
+                : null,
+            })),
             packageItems: product.packageItems.map((item) => ({
               ...item.toObject(),
               image: formatImageUrl(req, item.image),
@@ -336,6 +375,8 @@ const getProductById = async (req, res) => {
                 ? {
                   ...item.productId.toObject(),
                   images: formatImageArray(req, item.productId.images),
+                  isOnSale: item.productId.discount?.isActive,
+                  discountedPrice: item.productId.discount?.discountedPrice || item.productId.price
                 }
                 : null,
             })),
@@ -343,7 +384,10 @@ const getProductById = async (req, res) => {
         },
         relatedProducts: relatedProducts.map(p => ({
           ...p.toObject(),
-          images: formatImageArray(req, p.images)
+          images: formatImageArray(req, p.images),
+          isOnSale: p.discount?.isActive && (!p.discount?.endDate || new Date(p.discount.endDate) > new Date()),
+          discountPercentage: p.discount?.type === 'percentage' ? p.discount.value : 0,
+          discountedPrice: p.discount?.discountedPrice || p.price
         })),
       },
     });
@@ -387,18 +431,24 @@ const getProductBySlug = async (req, res) => {
       _id: { $ne: product._id },
     })
       .limit(4)
-      .select("name price images slug");
+      .select("name price images slug discount");
 
     res.json({
       success: true,
       data: {
         product: {
           ...product.toObject(),
-          images: formatImageArray(req, product.images)
+          images: formatImageArray(req, product.images),
+          isOnSale: product.discount?.isActive && (!product.discount?.endDate || new Date(product.discount.endDate) > new Date()),
+          discountPercentage: product.discount?.type === 'percentage' ? product.discount.value : 0,
+          discountedPrice: product.discount?.discountedPrice || product.price
         },
         relatedProducts: relatedProducts.map(p => ({
           ...p.toObject(),
-          images: formatImageArray(req, p.images)
+          images: formatImageArray(req, p.images),
+          isOnSale: p.discount?.isActive && (!p.discount?.endDate || new Date(p.discount.endDate) > new Date()),
+          discountPercentage: p.discount?.type === 'percentage' ? p.discount.value : 0,
+          discountedPrice: p.discount?.discountedPrice || p.price
         })),
       },
     });
@@ -425,14 +475,17 @@ const getFeaturedProducts = async (req, res) => {
     })
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
-      .select("name price images slug category specifications");
+      .select("name price images slug category specifications discount");
 
     res.json({
       success: true,
       data: {
         products: products.map(p => ({
           ...p.toObject(),
-          images: formatImageArray(req, p.images)
+          images: formatImageArray(req, p.images),
+          isOnSale: p.discount?.isActive && (!p.discount?.endDate || new Date(p.discount.endDate) > new Date()),
+          discountPercentage: p.discount?.type === 'percentage' ? p.discount.value : 0,
+          discountedPrice: p.discount?.discountedPrice || p.price
         })),
       },
     });
@@ -446,51 +499,7 @@ const getFeaturedProducts = async (req, res) => {
   }
 };
 
-// @desc    Get products by category
-// @route   GET /api/products/category/:category
-// @access  Public
-const getProductsByCategory = async (req, res) => {
-  try {
-    const { category } = req.params;
-    const { page = 1, limit = 12 } = req.query;
 
-    const products = await Product.find({
-      category: { $regex: category, $options: "i" },
-      status: "active",
-    })
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .select("name price images slug category specifications");
-
-    const totalProducts = await Product.countDocuments({
-      category: { $regex: category, $options: "i" },
-      status: "active",
-    });
-
-    res.json({
-      success: true,
-      data: {
-        products: products.map(p => ({
-          ...p.toObject(),
-          images: formatImageArray(req, p.images)
-        })),
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalProducts / limit),
-          totalProducts,
-        },
-      },
-    });
-  } catch (error) {
-    console.error("Get products by category error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error while fetching products by category",
-      error: error.message,
-    });
-  }
-};
 
 // @desc    Search products
 // @route   GET /api/products/search
@@ -520,14 +529,17 @@ const searchProducts = async (req, res) => {
       ],
     })
       .limit(parseInt(limit))
-      .select("name price images slug category");
+      .select("name price images slug category discount");
 
     res.json({
       success: true,
       data: {
         products: products.map(p => ({
           ...p.toObject(),
-          images: formatImageArray(req, p.images)
+          images: formatImageArray(req, p.images),
+          isOnSale: p.discount?.isActive && (!p.discount?.endDate || new Date(p.discount.endDate) > new Date()),
+          discountPercentage: p.discount?.type === 'percentage' ? p.discount.value : 0,
+          discountedPrice: p.discount?.discountedPrice || p.price
         })),
         searchQuery: q,
         resultsCount: products.length,
@@ -563,7 +575,7 @@ const getSearchSuggestions = async (req, res) => {
       name: { $regex: q, $options: "i" },
     })
       .limit(parseInt(limit))
-      .select("name slug images price category");
+      .select("name slug images price category discount");
 
     // Get category suggestions
     const categories = await Product.distinct("category", {
@@ -582,7 +594,10 @@ const getSearchSuggestions = async (req, res) => {
       data: {
         products: products.map(p => ({
           ...p.toObject(),
-          images: formatImageArray(req, p.images)
+          images: formatImageArray(req, p.images),
+          isOnSale: p.discount?.isActive && (!p.discount?.endDate || new Date(p.discount.endDate) > new Date()),
+          discountPercentage: p.discount?.type === 'percentage' ? p.discount.value : 0,
+          discountedPrice: p.discount?.discountedPrice || p.price
         })),
         categories: categories.slice(0, 5),
         brands: brands.slice(0, 5),
@@ -594,70 +609,6 @@ const getSearchSuggestions = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error while fetching suggestions",
-      error: error.message,
-    });
-  }
-};
-
-// @desc    Get all packages/bundles
-// @route   GET /api/products/packages
-// @access  Public
-const getPackages = async (req, res) => {
-  try {
-    const { page = 1, limit = 12, sortBy = "createdAt", sortOrder = "desc" } = req.query;
-
-    const sortConfig = {};
-    sortConfig[sortBy] = sortOrder === "asc" ? 1 : -1;
-
-    const packages = await Product.find({
-      productType: "package",
-      status: "active",
-    })
-      .populate({
-        path: "packageItems.productId",
-        select: "name price images inventory status",
-      })
-      .sort(sortConfig)
-      .limit(parseInt(limit))
-      .skip((page - 1) * limit)
-      .select("-__v");
-
-    const totalPackages = await Product.countDocuments({
-      productType: "package",
-      status: "active",
-    });
-
-    res.json({
-      success: true,
-      data: {
-        packages: packages.map((p) => ({
-          ...p.toObject(),
-          images: formatImageArray(req, p.images),
-          packageItems: p.packageItems.map((item) => ({
-            ...item.toObject(),
-            image: formatImageUrl(req, item.image),
-            productId: item.productId
-              ? {
-                ...item.productId.toObject(),
-                images: formatImageArray(req, item.productId.images),
-              }
-              : null,
-          })),
-        })),
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalPackages / limit),
-          totalPackages,
-          hasNext: page * limit < totalPackages,
-          hasPrev: page > 1,
-        },
-      },
-    });
-  } catch (error) {
-    console.error("Get packages error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error while fetching packages",
       error: error.message,
     });
   }
@@ -932,16 +883,12 @@ module.exports = {
   getProductById,
   getProductBySlug,
   getFeaturedProducts,
-  getProductsByCategory,
   searchProducts,
   getSearchSuggestions,
-  getPackages,
   getFiltersData,
   recordProductView,
   getStockAvailability,
   estimateShipping,
   getAllCategories,
   getCategoryById,
-  getAllPackages,
-  getPackageById,
 };

@@ -192,6 +192,11 @@ const validateProductQuery = [
     .optional()
     .isBoolean()
     .withMessage("Featured must be a boolean value"),
+
+  query("productType")
+    .optional()
+    .isIn(["single", "package"])
+    .withMessage("Product type must be either single or package"),
 ];
 
 // Bulk operation validation
